@@ -7,42 +7,62 @@ from pydantic import BaseModel, Field
 import torch
 
 from fractal_holonet_prod import ProductionFractalHoloNet, FractalHoloNetConfig
+from multimodal_holonet import MultimodalFractalHoloNet, MultimodalSignalConfig
 from pipeline import SimpleProductionTokenizer, FractalHoloNetInferencePipeline
 
-MODEL_DIR = os.getenv("MODEL_DIR", "./checkpoints/fractal_holonet_base")
+TEXT_MODEL_DIR = os.getenv("TEXT_MODEL_DIR", "./checkpoints/fractal_holonet_base")
+SIGNAL_MODEL_DIR = os.getenv("SIGNAL_MODEL_DIR", "./checkpoints/fractal_holonet_multimodal")
 
-# Global pipeline instance
 pipeline: Optional[FractalHoloNetInferencePipeline] = None
+multimodal_model: Optional[MultimodalFractalHoloNet] = None
 
-def init_pipeline():
-    global pipeline
-    os.makedirs(MODEL_DIR, exist_ok=True)
-    cfg_path = os.path.join(MODEL_DIR, "config.json")
+def init_services():
+    global pipeline, multimodal_model
+    # 1. Text Pipeline
+    os.makedirs(TEXT_MODEL_DIR, exist_ok=True)
+    cfg_path = os.path.join(TEXT_MODEL_DIR, "config.json")
     if not os.path.exists(cfg_path):
         config = FractalHoloNetConfig(vocab_size=300, d_model=128, n_layers=4, d_ff=384)
         model = ProductionFractalHoloNet(config)
-        model.save_pretrained(MODEL_DIR)
+        model.save_pretrained(TEXT_MODEL_DIR)
         tok = SimpleProductionTokenizer()
-        tok.save(os.path.join(MODEL_DIR, "tokenizer.json"))
-        
-    pipeline = FractalHoloNetInferencePipeline(model_dir=MODEL_DIR, device="cpu")
+        tok.save(os.path.join(TEXT_MODEL_DIR, "tokenizer.json"))
+    pipeline = FractalHoloNetInferencePipeline(model_dir=TEXT_MODEL_DIR, device="cpu")
+    
+    # 2. Multimodal Continuous Signal Model
+    if os.path.exists(SIGNAL_MODEL_DIR):
+        multimodal_model = MultimodalFractalHoloNet.from_pretrained(SIGNAL_MODEL_DIR, map_location="cpu")
+    else:
+        sig_cfg = MultimodalSignalConfig(
+            input_signal_dim=1,
+            output_signal_dim=1,
+            patch_size=1,
+            d_model=128,
+            n_layers=4,
+            d_ff=384,
+            vocab_size=0
+        )
+        multimodal_model = MultimodalFractalHoloNet(sig_cfg)
+        multimodal_model.save_pretrained(SIGNAL_MODEL_DIR)
+    multimodal_model.eval()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    init_pipeline()
+    init_services()
     yield
 
 app = FastAPI(
-    title="Fractal-HoloNet AI Inference Service",
-    description="High-performance production API for Fractal Gated Holographic Resonance Network",
-    version="1.0.0",
+    title="Fractal-HoloNet Multimodal AI Service",
+    description="Universal continuous signal & text intelligence using complex phase resonance",
+    version="2.0.0",
     lifespan=lifespan
 )
 
+# Text Schemas
 class GenerationRequest(BaseModel):
-    prompt: str = Field(..., json_schema_extra={"example": "Hello AI"})
+    prompt: str = Field(..., json_schema_extra={"example": "Fractal-HoloNet is a novel"})
     max_tokens: int = Field(default=50, ge=1, le=1024)
-    temperature: float = Field(default=0.8, ge=0.0, le=2.0)
+    temperature: float = Field(default=0.7, ge=0.0, le=2.0)
     top_k: int = Field(default=40, ge=1, le=100)
     top_p: float = Field(default=0.9, ge=0.0, le=1.0)
 
@@ -55,31 +75,44 @@ class GenerationResponse(BaseModel):
     latency_ms: float
 
 class EmbeddingRequest(BaseModel):
-    text: str = Field(..., json_schema_extra={"example": "Sequence to embed"})
+    text: str = Field(..., json_schema_extra={"example": "Signal embedding"})
 
 class EmbeddingResponse(BaseModel):
     embedding: List[float]
     dimension: int
 
+# Continuous Signal Schemas
+class SignalForecastRequest(BaseModel):
+    signal_history: List[List[float]] = Field(
+        ...,
+        description="Continuous raw multi-channel signal timesteps [[ch1, ch2...], ...]",
+        json_schema_extra={"example": [[0.12], [0.35], [0.89], [1.45], [0.80], [0.20]]}
+    )
+    forecast_steps: int = Field(default=32, ge=1, le=512)
+
+class SignalForecastResponse(BaseModel):
+    forecast: List[List[float]]
+    forecast_steps: int
+    channels: int
+    anomaly_scores: List[float]
+    latency_ms: float
+
 class ModelInfoResponse(BaseModel):
     architecture: str
-    config: dict
+    modalities: List[str]
     device: str
     status: str
 
 @app.get("/health", status_code=status.HTTP_200_OK)
 def health_check():
-    return {"status": "healthy", "service": "Fractal-HoloNet Inference Service", "timestamp": time.time()}
+    return {"status": "healthy", "service": "Fractal-HoloNet Multimodal Inference", "timestamp": time.time()}
 
 @app.get("/info", response_model=ModelInfoResponse)
 def model_info():
-    global pipeline
-    if pipeline is None:
-        init_pipeline()
     return {
-        "architecture": "Fractal Gated Holographic Resonance Network (Fractal-HoloNet)",
-        "config": pipeline.model.config.to_dict(),
-        "device": str(pipeline.device),
+        "architecture": "Multimodal Fractal Gated Holographic Resonance Network",
+        "modalities": ["text", "raw_audio", "ecg_biomedical", "iot_telemetry", "continuous_streams"],
+        "device": "cpu",
         "status": "ready"
     }
 
@@ -87,8 +120,7 @@ def model_info():
 def generate_text(req: GenerationRequest):
     global pipeline
     if pipeline is None:
-        init_pipeline()
-    
+        init_services()
     t0 = time.time()
     res = pipeline.generate(
         prompt=req.prompt,
@@ -98,7 +130,6 @@ def generate_text(req: GenerationRequest):
         top_p=req.top_p
     )
     latency_ms = (time.time() - t0) * 1000.0
-    
     return {
         "prompt": res["prompt"],
         "generated_text": res["generated_text"],
@@ -112,10 +143,35 @@ def generate_text(req: GenerationRequest):
 def get_embeddings(req: EmbeddingRequest):
     global pipeline
     if pipeline is None:
-        init_pipeline()
-        
+        init_services()
     emb = pipeline.get_embeddings(req.text)
+    return {"embedding": emb, "dimension": len(emb)}
+
+@app.post("/v1/signal/forecast", response_model=SignalForecastResponse)
+def forecast_signal(req: SignalForecastRequest):
+    global multimodal_model
+    if multimodal_model is None:
+        init_services()
+        
+    t0 = time.time()
+    # (1, T_hist, C)
+    sig_tensor = torch.tensor([req.signal_history], dtype=torch.float32)
+    
+    with torch.no_grad():
+        # 1. Anomaly scoring on observed history
+        _, anom_scores_tensor, _ = multimodal_model.forward_continuous(sig_tensor)
+        anom_scores = anom_scores_tensor[0, :, 0].cpu().tolist()
+        
+        # 2. O(1) Real-time forecasting
+        forecast_tensor = multimodal_model.forecast_stream(sig_tensor, forecast_steps=req.forecast_steps)
+        forecast_list = forecast_tensor[0].cpu().tolist()
+        
+    latency_ms = (time.time() - t0) * 1000.0
+    
     return {
-        "embedding": emb,
-        "dimension": len(emb)
+        "forecast": forecast_list,
+        "forecast_steps": len(forecast_list),
+        "channels": len(forecast_list[0]) if forecast_list else 1,
+        "anomaly_scores": anom_scores,
+        "latency_ms": round(latency_ms, 2)
     }
