@@ -5,34 +5,41 @@ import torch
 
 class SimpleProductionTokenizer:
     """
-    Byte-level fallback and vocabulary mapping tokenizer for production deployment.
+    Byte-level UTF-8 production tokenizer with support for Cyrillic and multilingual text.
     """
     def __init__(self, vocab: Optional[Dict[str, int]] = None):
         if vocab is not None:
             self.vocab = vocab
         else:
-            # Standard ASCII + byte mapping
             self.vocab = {"<pad>": 0, "<bos>": 1, "<eos>": 2, "<unk>": 3}
-            for i in range(256):
-                char = chr(i)
-                if char not in self.vocab:
-                    self.vocab[char] = len(self.vocab)
+            for b in range(256):
+                token_key = f"<byte_{b}>"
+                if token_key not in self.vocab:
+                    self.vocab[token_key] = len(self.vocab)
         self.inv_vocab = {v: k for k, v in self.vocab.items()}
 
-    def encode(self, text: str, add_bos: bool = True) -> List[int]:
+    def encode(self, text: str, add_bos: bool = False) -> List[int]:
         tokens = [self.vocab["<bos>"]] if add_bos else []
-        for char in text:
-            tokens.append(self.vocab.get(char, self.vocab["<unk>"]))
+        byte_data = text.encode("utf-8")
+        for b in byte_data:
+            token_key = f"<byte_{b}>"
+            tokens.append(self.vocab.get(token_key, self.vocab["<unk>"]))
         return tokens
 
     def decode(self, token_ids: List[int], skip_special: bool = True) -> str:
-        chars = []
+        byte_list = []
         special_ids = {0, 1, 2, 3}
         for tid in token_ids:
             if skip_special and tid in special_ids:
                 continue
-            chars.append(self.inv_vocab.get(tid, ""))
-        return "".join(chars)
+            token_str = self.inv_vocab.get(tid, "")
+            if token_str.startswith("<byte_") and token_str.endswith(">"):
+                try:
+                    b = int(token_str[6:-1])
+                    byte_list.append(b)
+                except ValueError:
+                    pass
+        return bytes(byte_list).decode("utf-8", errors="replace")
 
     def save(self, path: str):
         with open(path, "w", encoding="utf-8") as f:
@@ -68,9 +75,10 @@ class FractalHoloNetInferencePipeline:
         max_new_tokens: int = 64,
         temperature: float = 0.8,
         top_k: int = 40,
-        top_p: float = 0.9
+        top_p: float = 0.9,
+        eos_token_id: Optional[int] = None
     ) -> Dict[str, Any]:
-        input_ids = torch.tensor([self.tokenizer.encode(prompt)], dtype=torch.long, device=self.device)
+        input_ids = torch.tensor([self.tokenizer.encode(prompt, add_bos=False)], dtype=torch.long, device=self.device)
         prompt_len = input_ids.size(1)
         
         output_ids = self.model.generate(
@@ -78,13 +86,14 @@ class FractalHoloNetInferencePipeline:
             max_new_tokens=max_new_tokens,
             temperature=temperature,
             top_k=top_k,
-            top_p=top_p
+            top_p=top_p,
+            eos_token_id=eos_token_id
         )
         
         generated_ids = output_ids[0].tolist()
         new_ids = generated_ids[prompt_len:]
-        full_text = self.tokenizer.decode(generated_ids)
-        new_text = self.tokenizer.decode(new_ids)
+        full_text = self.tokenizer.decode(generated_ids, skip_special=True)
+        new_text = self.tokenizer.decode(new_ids, skip_special=True)
         
         return {
             "prompt": prompt,
@@ -101,6 +110,5 @@ class FractalHoloNetInferencePipeline:
             for block in self.model.blocks:
                 x, _ = block(x)
             x = self.model.ln_f(x)
-            # Mean pooling
             emb = x.mean(dim=1).squeeze(0).cpu().tolist()
         return emb

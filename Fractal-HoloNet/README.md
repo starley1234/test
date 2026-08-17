@@ -10,6 +10,7 @@
 
 | Файл / Каталог | Назначение |
 | :--- | :--- |
+| `train.py` | Модуль обучения и дообучения (Fine-tuning / Pre-training) на текстовых корпусах (`FractalHoloNetTrainer`). |
 | `fractal_holonet_prod.py` | Продакшен-реализация архитектуры: `ProductionFractalHoloNet`, `FractalHoloNetConfig`, streaming inference $\mathcal{O}(1)$, checkpoints I/O. |
 | `pipeline.py` | Высокоуровневый Inference Pipeline (`FractalHoloNetInferencePipeline`) и токенизатор. |
 | `serve.py` | Высокопроизводительный REST API сервер на **FastAPI / Uvicorn** с эндпоинтами генерации, эмбеддингов и health-check. |

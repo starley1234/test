@@ -280,11 +280,9 @@ class ProductionFractalHoloNet(nn.Module):
         
         # 1. Warm up state over the prompt sequence
         logits, states = self.forward(prompt_ids, states=None, use_step=False)
-        last_token = logits[:, -1, :].argmax(dim=-1, keepdim=True)
+        curr_token = logits[:, -1, :].argmax(dim=-1, keepdim=True)
         
-        generated = [prompt_ids, last_token]
-        curr_token = last_token
-        
+        generated = [prompt_ids, curr_token]
         eos_id = eos_token_id if eos_token_id is not None else self.config.eos_token_id
         
         for _ in range(max_new_tokens - 1):
@@ -306,10 +304,10 @@ class ProductionFractalHoloNet(nn.Module):
                 
             probs = F.softmax(step_logits, dim=-1)
             curr_token = torch.multinomial(probs, num_samples=1)
-            generated.append(curr_token)
             
             if eos_id is not None and (curr_token == eos_id).all():
                 break
+            generated.append(curr_token)
                 
         return torch.cat(generated, dim=1)
 
