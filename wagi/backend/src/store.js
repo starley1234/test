@@ -56,6 +56,8 @@ export class Store {
       label: String(label ?? "anon").slice(0, 48),
       balance: startingBalance,
       spent: 0,
+      burned: 0,
+      prompts: 0,
       created: Date.now(),
       ip: ip ?? null,
     };
@@ -88,6 +90,8 @@ export class Store {
     }
     info.balance -= fee;
     info.spent += fee;
+    info.burned = (info.burned ?? 0) + parts.burn;
+    info.prompts = (info.prompts ?? 0) + 1;
 
     const nodes = Object.keys(this.state.providers);
     const node = nodes[Object.keys(this.state.keys).indexOf(key) % nodes.length];
@@ -103,6 +107,22 @@ export class Store {
     this.state.wall.unshift(item);
     if (this.state.wall.length > 200) this.state.wall.length = 200;
     this.scheduleFlush();
+  }
+
+  /// Top burners for the leaderboard (api keys are never exposed).
+  leaderboard(limit = 10) {
+    return Object.entries(this.state.keys)
+      .map(([key, info]) => ({
+        key,
+        label: info.label,
+        burned: round6(info.burned ?? 0),
+        spent: round6(info.spent ?? 0),
+        prompts: info.prompts ?? 0,
+      }))
+      .filter((e) => e.burned > 0)
+      .sort((a, b) => b.burned - a.burned)
+      .slice(0, limit)
+      .map(({ key, ...rest }) => ({ ...rest, handle: "…" + key.slice(-6) }));
   }
 
   stats() {

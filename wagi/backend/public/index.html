@@ -240,6 +240,14 @@ footer a{display:block;color:var(--muted);padding:2px 0}
   </div>
 </section>
 
+<section id="leaders">
+  <div class="wrap">
+    <h2 data-i18n="lb_h">🏆 Топ сожигателей</h2>
+    <p class="lead" data-i18n="lb_p">Кто сегодня приблизил AGI сильнее всех. Один промпт — один шаг к вершине лидерборда.</p>
+    <div class="wall" id="lbList"><div class="wall-item"><span class="q" data-i18n="lb_empty">Пока никто не жёг — будь первым в истории.</span></div></div>
+  </div>
+</section>
+
 <section id="eras">
   <div class="wrap">
     <h2 data-i18n="eras_h">10 эпох до AGI</h2>
@@ -268,7 +276,7 @@ footer a{display:block;color:var(--muted);padding:2px 0}
   <div class="wrap">
     <h2 data-i18n="rm_h">Дорожная карта</h2>
     <div class="grid g2 roadmap" style="margin-top:30px">
-      <div class="phase done"><span>PHASE 0 — DONE</span><b data-i18n="rm0h">Контракты + плейграунд</b><p data-i18n="rm0p">Смарт-контракты написаны и протестированы (38 тестов), управление — 3 мультисиг-кошельками, демо-шлюз работает прямо на этой странице.</p></div>
+      <div class="phase done"><span>PHASE 0 — DONE</span><b data-i18n="rm0h">Контракты + плейграунд</b><p data-i18n="rm0p">Смарт-контракты написаны и протестированы (44 теста), управление — 3 мультисиг-кошельками, демо-шлюз работает прямо на этой странице.</p></div>
       <div class="phase"><span>PHASE 1 — T-14 дней</span><b data-i18n="rm1h">Виральная волна</b><p data-i18n="rm1p">Квесты, стена промптов, карточки прогресса. 100K подписчиков до TGE.</p></div>
       <div class="phase"><span>PHASE 2 — TGE</span><b data-i18n="rm2h">Деплой на Base + DEX</b><p data-i18n="rm2p">Аудит, деплой, 80/20 пул, клейм аирдропа через permit.</p></div>
       <div class="phase"><span>PHASE 3 — T+30 дней</span><b data-i18n="rm3h">Главныйнет-шлюз</b><p data-i18n="rm3p">Реальные модели за $WAGI, ончейн-сеттлемент каждого запроса, SDK для агентов.</p></div>
@@ -330,6 +338,7 @@ const I18N = {
     tk6:"Ранние инвесторы", tk6s:"вестинг 18 мес",
     wall_h:'Стена промптов', wall_p:"Каждый запрос к сети попадает сюда — анонимно. Смотри, о чём спрашивает человечество, пока приближает AGI.",
     wall_empty:"Пока тихо. Будь первым — напиши промпт в плейграунде.",
+    lb_h:"🏆 Топ сожигателей", lb_p:"Кто сегодня приблизил AGI сильнее всех. Один промпт — один шаг к вершине лидерборда.", lb_empty:"Пока никто не жёг — будь первым в истории.",
     eras_h:"10 эпох до AGI", eras_p:"Эпохи фиксируются смарт-контрактом по суммарному сожжённому $WAGI. Откат невозможен.",
     air_h:"Аирдроп: 15% supply", air_p:"Выполняй квесты — получай очки. Снапшот перед TGE, клейм без газа (permit). Каждое очко = аллокация.",
     q1h:"Подписаться на X и включить колокольчик", q1p:"Форма сбора хэндлов — в закрепе канала",
@@ -340,7 +349,7 @@ const I18N = {
     q6h:"Мем недели в Discord", q6p:"Голосование сообщества, топ-3 получают очки",
     score:"Очки аирдропа:",
     rm_h:"Дорожная карта",
-    rm0h:"Контракты + плейграунд", rm0p:"Смарт-контракты написаны и протестированы (38 тестов), управление — 3 мультисиг-кошельками, демо-шлюз работает прямо на этой странице.",
+    rm0h:"Контракты + плейграунд", rm0p:"Смарт-контракты написаны и протестированы (44 теста), управление — 3 мультисиг-кошельками, демо-шлюз работает прямо на этой странице.",
     rm1h:"Виральная волна", rm1p:"Квесты, стена промптов, карточки прогресса. 100K подписчиков до TGE.",
     rm2h:"Деплой на Base + DEX", rm2p:"Аудит, деплой, 80/20 пул, клейм аирдропа через permit.",
     rm3h:"Главныйнет-шлюз", rm3p:"Реальные модели за $WAGI, ончейн-сеттлемент каждого запроса, SDK для агентов.",
@@ -378,6 +387,7 @@ const I18N = {
     tk6:"Early investors", tk6s:"18mo vesting",
     wall_h:"Prompt wall", wall_p:"Every request lands here — anonymized. Watch what humanity asks while it approaches AGI.",
     wall_empty:"Quiet so far. Be the first — send a prompt in the playground.",
+    lb_h:"🏆 Top burners", lb_p:"Who moved AGI forward the most today. One prompt — one step up the leaderboard.", lb_empty:"Nobody has burned yet — be the first in history.",
     eras_h:"10 eras to AGI", eras_p:"Eras are fixed by smart contract at cumulative-burn thresholds. No rollbacks.",
     air_h:"Airdrop: 15% of supply", air_p:"Complete quests, earn points. Snapshot before TGE, gasless permit claim. Every point = allocation.",
     q1h:"Follow on X and ring the bell", q1p:"Handle collection form — pinned on the channel",
@@ -388,7 +398,7 @@ const I18N = {
     q6h:"Meme of the week in Discord", q6p:"Community vote, top-3 earn points",
     score:"Airdrop points:",
     rm_h:"Roadmap",
-    rm0h:"Contracts + playground", rm0p:"Smart contracts written and tested (38 tests), governed by 3 multisig wallets, demo gateway running on this very page.",
+    rm0h:"Contracts + playground", rm0p:"Smart contracts written and tested (44 tests), governed by 3 multisig wallets, demo gateway running on this very page.",
     rm1h:"Viral wave", rm1p:"Quests, prompt wall, progress cards. 100K followers pre-TGE.",
     rm2h:"Base deploy + DEX", rm2p:"Audit, deploy, 80/20 pool, gasless airdrop claims.",
     rm3h:"Mainnet gateway", rm3p:"Real models for $WAGI, on-chain settlement of every request, agent SDK.",
@@ -451,6 +461,23 @@ async function tickWall() {
 }
 setInterval(tickWall, 5000);
 tickWall();
+
+/* ── leaderboard ──────────────────────────────────────────────────────── */
+async function tickLb() {
+  try {
+    const lb = await (await fetch("/api/leaderboard")).json();
+    const list = document.getElementById("lbList");
+    if (!lb.items.length) {
+      list.innerHTML = '<div class="wall-item"><span class="q">' + I18N[lang].lb_empty + '</span></div>';
+    } else {
+      list.innerHTML = lb.items
+        .map((e, i) => `<div class="wall-item"><span class="q">${i + 1}. ${escapeHtml(e.label)} · ${escapeHtml(e.handle)}</span><span class="meta">🔥 ${e.burned} WAGI · ${e.prompts} 🔁</span></div>`)
+        .join("");
+    }
+  } catch {}
+}
+setInterval(tickLb, 5000);
+tickLb();
 
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));

@@ -101,6 +101,66 @@ test("full chat flow: key -> completion -> billing -> wall -> stats", async () =
   }
 });
 
+test("/api/me reflects billing, leaderboard ranks burners", async () => {
+  const { server, base } = await startServer();
+  try {
+    const { apiKey: big } = await (
+      await fetch(base + "/api/keys", { method: "POST", body: JSON.stringify({ label: "big-burner" }), headers: { "content-type": "application/json" } })
+    ).json();
+    const { apiKey: small } = await (
+      await fetch(base + "/api/keys", { method: "POST", body: JSON.stringify({ label: "tiny" }), headers: { "content-type": "application/json" } })
+    ).json();
+
+    const chat = (key) =>
+      fetch(base + "/v1/chat/completions", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: "Bearer " + key },
+        body: JSON.stringify({ messages: [{ role: "user", content: "burn some wagi please, a long prompt to raise the fee above the floor" }] }),
+      });
+
+    await chat(big); await chat(big); await chat(small);
+
+    const me = await (await fetch(base + "/api/me", { headers: { authorization: "Bearer " + big } })).json();
+    assert.ok(me.burned > 0 && me.prompts === 2 && me.balance < 5);
+    const unauth = await fetch(base + "/api/me");
+    assert.equal(unauth.status, 401);
+
+    const lb = await (await fetch(base + "/api/leaderboard")).json();
+    assert.equal(lb.items.length, 2);
+    assert.equal(lb.items[0].label, "big-burner"); // burned more, ranked first
+    assert.ok(lb.items[0].burned >= lb.items[1].burned);
+    assert.ok(!JSON.stringify(lb).includes("sk-wagi-"), "api keys must never leak");
+  } finally {
+    server.close();
+  }
+});
+
+test("per-key rate limiting returns 429 beyond the budget", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "wagi-rl-"));
+  const app = createApp({ stateFile: join(dir, "state.json"), chatRpm: 3 });
+  const server = app.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const base = `http://127.0.0.1:${server.address().port}`;
+  try {
+    const { apiKey } = await (
+      await fetch(base + "/api/keys", { method: "POST", body: "{}", headers: { "content-type": "application/json" } })
+    ).json();
+    const send = () =>
+      fetch(base + "/v1/chat/completions", {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: "Bearer " + apiKey },
+        body: JSON.stringify({ messages: [{ role: "user", content: "wen?" }] }),
+      });
+    const codes = [];
+    for (let i = 0; i < 5; i++) codes.push((await send()).status);
+    assert.deepEqual(codes.slice(0, 3), [200, 200, 200]);
+    assert.equal(codes[3], 429);
+    assert.equal(codes[4], 429);
+  } finally {
+    server.close();
+  }
+});
+
 test("wall sanitizes emails and phones", async () => {
   const { server, base } = await startServer();
   try {

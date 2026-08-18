@@ -78,8 +78,10 @@ npx hardhat run scripts/exec-via-multisig.js --no-compile --network base -- \
 - [ ] `WAGI_STATE_FILE` — на персистентный том; бэкап раз в час.
 - [ ] Docker: `docker build -t wagi-gateway ./backend && docker run -d -p 8080:8080 wagi-gateway`
 - [ ] TLS терминация (nginx/Caddy/Cloudflare) перед :8080.
-- [ ] **Ончейн-сеттелемент:** заменить демо-ledger на вызовы `settle()` релейер-ключом:
-      батчинг (1 tx / 100 запросов), nonce-менеджмент, retry-очередь.
+- [ ] **Ончейн-сеттелемент:** заменить демо-ledger на вызовы `settleBatch()`
+      релейер-ключом (до 100 запросов одной транзакцией, атомарно; батч с
+      невалидной записью откатывается целиком и ретраится), nonce-менеджмент,
+      retry-очередь.
 - [ ] Рейт-лимиты: уже встроены (ключи/фаусет); добавить per-key RPS на LB.
 - [ ] Мониторинг: /healthz в uptime-провайдер; алерты на 402-rate, latency,
       upstream errors; логи — Loki/CloudWatch.

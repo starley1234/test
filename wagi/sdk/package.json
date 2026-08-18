@@ -1,0 +1,15 @@
+{
+  "name": "@wenagi/sdk",
+  "version": "1.0.0",
+  "description": "Zero-dependency WenAGI client: chat with LLMs, pay in $WAGI, track burns.",
+  "type": "module",
+  "main": "index.js",
+  "exports": { ".": "./index.js" },
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "demo": "node example.js"
+  },
+  "engines": { "node": ">=18" },
+  "keywords": ["wenagi", "wagi", "llm", "openai-compatible", "crypto", "agents"],
+  "license": "MIT"
+}

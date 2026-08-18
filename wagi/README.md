@@ -27,9 +27,10 @@
 
 | Папка | Что внутри |
 |---|---|
-| `contracts/` | 6 смарт-контрактов (Solidity 0.8.28) + **38 тестов** (Hardhat 3 + viem) |
-| `backend/` | WenAGI Gateway: OpenAI-совместимый API с биллингом $WAGI, **9 тестов**, zero-deps |
+| `contracts/` | 6 смарт-контрактов (Solidity 0.8.28) + **44 теста**, включая property-based (Hardhat 3 + viem) |
+| `backend/` | WenAGI Gateway: OpenAI-совместимый API с биллингом $WAGI, rate-limit, лидерборд — **11 тестов**, zero-deps |
 | `backend/public/` | Лендинг с живым прогресс-баром + плейграунд |
+| `sdk/` | `@wenagi/sdk` — zero-dep клиент для ИИ-агентов (`connect → chat → burn`), 3 теста |
 | `marketing/` | Вайтпейпер RU/EN, план запуска, контент-кит, аирдроп, мем-пак, пресс-релиз, KPI |
 | `docs/PRODUCTION.md` | Ранбук продакшена: аудит, деплой на Base, инциденты |
 
@@ -46,6 +47,15 @@ cd ../backend && npm start
 
 # 3) Тесты шлюза
 npm test
+```
+
+### SDK за 10 секунд
+
+```js
+import { connect } from "@wenagi/sdk"; // папка sdk/ (zero-dependency)
+const wagi = await connect("http://localhost:8080", { label: "my-agent" });
+console.log(await wagi.ask("wen agi?"));      // ответ WAGI-1
+console.log(wagi.lastBilling);                // { fee, split: {burn}, balance, progressBps }
 ```
 
 ### API за 30 секунд
@@ -90,7 +100,7 @@ curl -s localhost:8080/v1/chat/completions \
 
 ## Статус
 
-- ✅ Контракты: написаны, скомпилированы, 38/38 тестов зелёные (включая мультисиг-говернанс)
+- ✅ Контракты: написаны, скомпилированы, 44/44 теста зелёные (мультисиг-говернанс + property-инварианты)
 - ✅ Шлюз: работает (демо-модель WAGI-1, опциональный real-upstream)
 - ✅ Лендинг + плейграунд: живые
 - ✅ Маркетинг: полный кит готов к запуску

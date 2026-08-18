@@ -68,7 +68,7 @@ Agent/app ──HTTPS──► WenAGI Gateway (OpenAI-compatible)
 ```
 
 Contracts (`contracts/src/`): WagiToken (ERC-20 + EIP-2612 + burn),
-InferenceMarket (fee split + replay-protected settlement), AGIProgressOracle
+InferenceMarket (fee split + replay-protected settlement incl. atomic `settleBatch` up to 100 prompts/tx), AGIProgressOracle
 (10 eras by cumulative burn), WagiAirdrop (merkle, double-claim proof),
 TokenVesting (cliff + linear, revocable), WagiMultisig (on-chain-confirmation
 multisig: submit → confirmations → execute; admin only via self-calls).
@@ -77,7 +77,7 @@ multisig: submit → confirmations → execute; admin only via self-calls).
 every contract), RelayerMultisig 2/3 (batch settlement), OracleMultisig 2/3
 (progress updates).
 
-Tests: 38/38 green (`cd contracts && npm test`), including full multisig
+Tests: 44/44 green (`cd contracts && npm test`), including property-based invariants and full multisig
 governance integration (quorum, revocation, self-call admin, and the proof
 that a single key can never move funds or the narrative).
 

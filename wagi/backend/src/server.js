@@ -45,6 +45,7 @@ export function createApp(options = {}) {
   const publicDir = options.publicDir ?? join(import.meta.dirname, "..", "public");
   const startingBalance = options.startingBalance ?? 1000;
   const faucetAmount = options.faucetAmount ?? 250;
+  const chatRpm = options.chatRpm ?? 30; // per-key requests per minute
   const upstream = options.upstream ?? null; // { base, apiKey, model }
 
   const ipBuckets = new Map(); // ip -> { count, resetAt }
@@ -133,6 +134,23 @@ export function createApp(options = {}) {
         return json(res, 200, { items: store.state.wall.slice(0, 30) });
       }
 
+      if (req.method === "GET" && url.pathname === "/api/leaderboard") {
+        return json(res, 200, { items: store.leaderboard(10) });
+      }
+
+      if (req.method === "GET" && url.pathname === "/api/me") {
+        const auth = (req.headers.authorization ?? "").replace(/^Bearer\s+/i, "");
+        const info = store.keyInfo(auth);
+        if (!info) return json(res, 401, { error: "invalid api key" });
+        return json(res, 200, {
+          label: info.label,
+          balance: Math.round(info.balance * 1e6) / 1e6,
+          spent: Math.round(info.spent * 1e6) / 1e6,
+          burned: Math.round((info.burned ?? 0) * 1e6) / 1e6,
+          prompts: info.prompts ?? 0,
+        });
+      }
+
       if (req.method === "POST" && url.pathname === "/api/keys") {
         const ip = req.socket.remoteAddress ?? "?";
         if (!rateLimit("key:" + ip)) return json(res, 429, { error: "too many keys requested, slow down" });
@@ -165,6 +183,9 @@ export function createApp(options = {}) {
         const auth = (req.headers.authorization ?? "").replace(/^Bearer\s+/i, "");
         const info = store.keyInfo(auth);
         if (!info) return json(res, 401, { error: "invalid api key (create one: POST /api/keys)" });
+        if (!rateLimit("chat:" + auth, chatRpm, 60_000)) {
+          return json(res, 429, { error: `rate limit: ${chatRpm} requests/minute per key` });
+        }
         const body = await readBody(req);
         const messages = Array.isArray(body.messages) ? body.messages : null;
         if (!messages?.length) return json(res, 400, { error: "messages[] required" });

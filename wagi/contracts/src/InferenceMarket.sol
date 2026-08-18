@@ -151,6 +151,46 @@ contract InferenceMarket {
         uint64 tokensIn,
         uint64 tokensOut
     ) external onlyRelayer {
+        _settle(user, provider, promptHash, fee, tokensIn, tokensOut);
+    }
+
+    /// @dev Batch limit — bound worst-case gas per settlement transaction.
+    uint256 public constant MAX_BATCH = 100;
+
+    /// @notice One request settled by the gateway (relayer metering).
+    struct PromptBill {
+        address user;
+        address provider;
+        bytes32 promptHash;
+        uint256 fee;
+        uint64 tokensIn;
+        uint64 tokensOut;
+    }
+
+    error BadBatchSize(uint256 size);
+
+    /// @notice Settle a batch of completed requests in one transaction.
+    ///         Atomic: if ANY entry is invalid (unknown provider, replayed
+    ///         hash, insufficient allowance) the whole batch reverts —
+    ///         the gateway retries it after fixing the offending entry.
+    ///         Cuts per-request gas by an order of magnitude on Base.
+    function settleBatch(PromptBill[] calldata batch) external onlyRelayer {
+        uint256 n = batch.length;
+        if (n == 0 || n > MAX_BATCH) revert BadBatchSize(n);
+        for (uint256 i = 0; i < n; i++) {
+            PromptBill calldata b = batch[i];
+            _settle(b.user, b.provider, b.promptHash, b.fee, b.tokensIn, b.tokensOut);
+        }
+    }
+
+    function _settle(
+        address user,
+        address provider,
+        bytes32 promptHash,
+        uint256 fee,
+        uint64 tokensIn,
+        uint64 tokensOut
+    ) internal {
         if (fee == 0) revert ZeroFee();
         if (!isProvider[provider]) revert UnknownProvider(provider);
         if (settledPrompt[promptHash]) revert PromptAlreadySettled(promptHash);

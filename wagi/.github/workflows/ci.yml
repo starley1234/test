@@ -36,9 +36,41 @@ jobs:
           node-version: 22
       - run: npm test
 
+  sdk:
+    name: SDK — tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: wagi/sdk
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm test
+
   docker:
     name: Gateway image builds
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - run: docker build -t wagi-gateway wagi/backend
+
+  slither:
+    name: Slither — static analysis (non-blocking)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install slither-analyzer solc-select
+      - run: solc-select install 0.8.28 && solc-select use 0.8.28
+      - run: slither wagi/contracts/src --solc-args "--optimize --optimize-runs 200" || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: slither-report
+          path: slither.json
+          if-no-files-found: ignore
