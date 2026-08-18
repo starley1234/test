@@ -18,6 +18,7 @@ contract WagiAirdrop {
     event RootSet(bytes32 indexed root, uint256 totalLeaves);
     event Claimed(address indexed claimant, uint256 amount);
     event Recovered(address indexed to, uint256 amount);
+    event OwnershipTransferred(address indexed previous, address indexed next);
 
     error OnlyOwner();
     error ZeroAddress();
@@ -57,6 +58,13 @@ contract WagiAirdrop {
     function setRoot(bytes32 root, uint256 totalLeaves) external onlyOwner {
         merkleRoot = root;
         emit RootSet(root, totalLeaves);
+    }
+
+    /// @notice Hand ownership to the DAO multisig.
+    function transferOwnership(address next) external onlyOwner {
+        if (next == address(0)) revert ZeroAddress();
+        emit OwnershipTransferred(owner, next);
+        owner = next;
     }
 
     /// @notice Recover unclaimed tokens after the window closes (to DAO).

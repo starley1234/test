@@ -36,6 +36,7 @@ contract AGIProgressOracle {
 
     event ProgressUpdated(uint16 indexed oldBps, uint16 indexed newBps, string narrative, uint256 burnedTotal, uint256 timestamp);
     event OracleUpdated(address indexed previous, address indexed next);
+    event OwnershipTransferred(address indexed previous, address indexed next);
 
     error OnlyOwner();
     error OnlyOracle();
@@ -129,5 +130,13 @@ contract AGIProgressOracle {
         if (next == address(0)) revert ZeroAddress();
         emit OracleUpdated(oracle, next);
         oracle = next;
+    }
+
+    /// @notice Hand ownership to the DAO multisig. The multisig itself can
+    ///         correct any mistake by a threshold decision.
+    function transferOwnership(address next) external onlyOwner {
+        if (next == address(0)) revert ZeroAddress();
+        emit OwnershipTransferred(owner, next);
+        owner = next;
     }
 }

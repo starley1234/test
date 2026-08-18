@@ -29,6 +29,7 @@ contract TokenVesting {
     event VestCreated(address indexed beneficiary, uint256 total, uint64 start, uint64 cliff, uint64 duration, bool revocable);
     event Released(address indexed beneficiary, uint256 amount);
     event Revoked(address indexed beneficiary, uint256 refunded);
+    event OwnershipTransferred(address indexed previous, address indexed next);
 
     error OnlyOwner();
     error ZeroAddress();
@@ -48,6 +49,13 @@ contract TokenVesting {
         if (address(wagi_) == address(0)) revert ZeroAddress();
         wagi = wagi_;
         owner = msg.sender;
+    }
+
+    /// @notice Hand ownership to the DAO multisig.
+    function transferOwnership(address next) external onlyOwner {
+        if (next == address(0)) revert ZeroAddress();
+        emit OwnershipTransferred(owner, next);
+        owner = next;
     }
 
     /// @notice Create a linear vesting schedule. Treasury must fund this
