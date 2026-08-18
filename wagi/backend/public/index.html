@@ -1,0 +1,527 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WenAGI — $WAGI | Токен, который сжигает путь к AGI</title>
+<meta name="description" content="WenAGI ($WAGI) — децентрализованный LLM-инференс, оплачиваемый токенами. Каждый промпт сжигает 5% комиссии навсегда. Чем ближе AGI — тем меньше $WAGI существует.">
+<meta property="og:title" content="WenAGI — $WAGI | WEN AGI?">
+<meta property="og:description" content="Каждый промпт сжигает $WAGI навсегда. Живой прогресс-бар до AGI. OpenAI-совместимый API, оплаченный токенами.">
+<meta property="og:image" content="/og-banner.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="/mascot.png">
+<style>
+:root{
+  --bg:#07070f; --panel:#0d0d1c; --panel2:#12122a;
+  --neon:#39ff88; --neon-dim:#2bd96e; --violet:#8b5cf6; --cyan:#22d3ee;
+  --text:#e8e8f4; --muted:#8a8aa8; --danger:#ff5470;
+  --mono:ui-monospace,'JetBrains Mono','Fira Code',Menlo,monospace;
+  --sans:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);line-height:1.6;overflow-x:hidden}
+body::before{content:"";position:fixed;inset:0;z-index:-1;
+  background:radial-gradient(60% 50% at 20% 0%,rgba(139,92,246,.18),transparent 60%),
+             radial-gradient(50% 40% at 90% 10%,rgba(34,211,238,.10),transparent 60%),
+             radial-gradient(40% 40% at 50% 100%,rgba(57,255,136,.08),transparent 60%)}
+a{color:var(--neon);text-decoration:none}
+.wrap{max-width:1080px;margin:0 auto;padding:0 20px}
+.mono{font-family:var(--mono)}
+header{position:sticky;top:0;z-index:50;backdrop-filter:blur(12px);background:rgba(7,7,15,.75);border-bottom:1px solid #ffffff14}
+header .wrap{display:flex;align-items:center;gap:18px;height:60px}
+.logo{display:flex;align-items:center;gap:10px;font-weight:800;font-size:18px;letter-spacing:.5px;color:var(--text)}
+.logo img{width:30px;height:30px;border-radius:8px}
+.logo .tick{color:var(--neon)}
+nav{margin-left:auto;display:flex;gap:22px;font-size:14px}
+nav a{color:var(--muted)}
+nav a:hover{color:var(--text)}
+.lang{cursor:pointer;border:1px solid #ffffff22;border-radius:8px;padding:4px 10px;font-size:12px;color:var(--muted);background:transparent}
+.lang:hover{color:var(--neon);border-color:var(--neon)}
+.btn{display:inline-flex;align-items:center;gap:8px;padding:12px 22px;border-radius:12px;font-weight:700;font-size:15px;border:1px solid transparent;cursor:pointer;transition:.15s}
+.btn-neon{background:var(--neon);color:#04120a;box-shadow:0 0 24px rgba(57,255,136,.35)}
+.btn-neon:hover{box-shadow:0 0 40px rgba(57,255,136,.55);transform:translateY(-1px)}
+.btn-ghost{border-color:#ffffff26;color:var(--text)}
+.btn-ghost:hover{border-color:var(--neon);color:var(--neon)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+
+.hero{text-align:center;padding:88px 20px 40px}
+.pill{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--neon)55;background:var(--neon)0d;color:var(--neon);font-family:var(--mono);font-size:12px;padding:6px 14px;border-radius:99px;margin-bottom:26px}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--neon);animation:pulse 1.6s infinite}
+@keyframes pulse{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(57,255,136,.6)}50%{opacity:.6;box-shadow:0 0 0 8px rgba(57,255,136,0)}}
+h1{font-size:clamp(44px,8vw,92px);line-height:1.02;font-weight:900;letter-spacing:-2px}
+h1 .grad{background:linear-gradient(90deg,var(--neon),var(--cyan) 50%,var(--violet));-webkit-background-clip:text;background-clip:text;color:transparent}
+.sub{max-width:640px;margin:22px auto 0;color:var(--muted);font-size:18px}
+.sub b{color:var(--text)}
+.hero-cta{display:flex;gap:14px;justify-content:center;margin-top:34px;flex-wrap:wrap}
+
+/* ── progress bar ── */
+.progress-card{margin:48px auto 0;max-width:760px;background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid #ffffff14;border-radius:20px;padding:26px 26px 22px;box-shadow:0 20px 60px rgba(0,0,0,.5)}
+.pc-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px;font-family:var(--mono);font-size:12px;color:var(--muted)}
+.pc-top b{color:var(--neon);font-size:15px}
+.bar{position:relative;height:26px;border-radius:99px;background:#ffffff10;margin:12px 0 8px;overflow:hidden}
+.bar-fill{position:absolute;inset:0;width:0%;border-radius:99px;background:linear-gradient(90deg,var(--neon),var(--cyan));box-shadow:0 0 18px rgba(57,255,136,.5);transition:width 1.2s cubic-bezier(.2,.8,.2,1)}
+.bar-fill::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(115deg,transparent 0 8px,rgba(255,255,255,.15) 8px 16px);animation:march 1.2s linear infinite}
+@keyframes march{to{transform:translateX(22px)}}
+.era{display:flex;justify-content:space-between;align-items:baseline;gap:8px;flex-wrap:wrap}
+.era b{font-size:15px}
+.era span{color:var(--muted);font-size:13px;font-style:italic}
+.stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:18px}
+.stat{background:#ffffff08;border:1px solid #ffffff10;border-radius:12px;padding:12px}
+.stat .v{font-family:var(--mono);font-size:17px;color:var(--text)}
+.stat .k{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.8px;margin-top:2px}
+
+section{padding:72px 20px}
+h2{font-size:clamp(28px,4vw,40px);letter-spacing:-1px;margin-bottom:10px}
+.lead{color:var(--muted);max-width:640px}
+.grid{display:grid;gap:16px;margin-top:34px}
+.g3{grid-template-columns:repeat(3,1fr)}
+.g2{grid-template-columns:repeat(2,1fr)}
+.card{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid #ffffff12;border-radius:16px;padding:24px;transition:.15s}
+.card:hover{border-color:var(--neon)66;transform:translateY(-2px)}
+.card .num{font-family:var(--mono);color:var(--neon);font-size:13px;margin-bottom:12px}
+.card h3{font-size:17px;margin-bottom:8px}
+.card p{color:var(--muted);font-size:14px}
+
+/* ── tokenomics ── */
+.tokenomics{display:grid;grid-template-columns:340px 1fr;gap:40px;align-items:center;margin-top:34px}
+.donut-wrap{display:flex;justify-content:center}
+.tk-rows{display:flex;flex-direction:column;gap:10px}
+.tk{display:grid;grid-template-columns:14px 1fr auto;gap:12px;align-items:center;background:#ffffff07;border:1px solid #ffffff10;border-radius:12px;padding:12px 16px}
+.tk i{width:14px;height:14px;border-radius:4px;display:block}
+.tk .lbl{font-size:14px}
+.tk .lbl small{display:block;color:var(--muted)}
+.tk .pct{font-family:var(--mono);color:var(--text);font-weight:700}
+
+/* ── wall ── */
+.wall{display:flex;flex-direction:column;gap:10px;margin-top:30px;max-height:420px;overflow:hidden}
+.wall-item{display:flex;justify-content:space-between;gap:16px;background:#ffffff07;border:1px solid #ffffff10;border-left:3px solid var(--neon);border-radius:10px;padding:12px 16px;font-size:14px}
+.wall-item .q{color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.wall-item .meta{font-family:var(--mono);font-size:11px;color:var(--muted);white-space:nowrap}
+
+/* ── eras timeline ── */
+.eras{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-top:30px}
+.era-t{border:1px solid #ffffff12;border-radius:12px;padding:14px;background:#ffffff07}
+.era-t.done{border-color:var(--neon)66;background:var(--neon)0a}
+.era-t b{display:block;font-size:13px}
+.era-t span{font-size:11px;color:var(--muted);font-style:italic}
+.era-t .p{font-family:var(--mono);font-size:11px;color:var(--violet);margin-bottom:6px}
+
+/* ── airdrop ── */
+.quests{counter-reset:q}
+.quest{display:flex;gap:16px;align-items:flex-start;padding:16px 0;border-bottom:1px dashed #ffffff14}
+.quest:last-child{border-bottom:0}
+.quest input{margin-top:5px;accent-color:var(--neon);width:18px;height:18px}
+.quest .qq b{font-size:15px}
+.quest .qq span{display:block;color:var(--muted);font-size:13px;margin-top:2px}
+.quest .pts{margin-left:auto;font-family:var(--mono);color:var(--neon);white-space:nowrap;font-weight:700}
+.airdrop-box{background:linear-gradient(180deg,var(--panel2),var(--panel));border:1px solid #ffffff14;border-radius:20px;padding:30px}
+
+/* roadmap */
+.roadmap .phase{border-left:2px solid #ffffff1c;padding:0 0 28px 24px;position:relative}
+.roadmap .phase::before{content:"";position:absolute;left:-7px;top:4px;width:12px;height:12px;border-radius:50%;background:var(--panel);border:2px solid var(--muted)}
+.roadmap .phase.done::before{border-color:var(--neon);background:var(--neon)}
+.roadmap .phase b{color:var(--text)}
+.roadmap .phase span{color:var(--violet);font-family:var(--mono);font-size:12px}
+.roadmap .phase p{color:var(--muted);font-size:14px;margin-top:4px}
+
+footer{border-top:1px solid #ffffff12;padding:44px 20px 60px;color:var(--muted);font-size:13px}
+footer .cols{display:grid;grid-template-columns:2fr 1fr 1fr;gap:30px}
+footer h4{color:var(--text);font-size:13px;margin-bottom:10px}
+footer a{display:block;color:var(--muted);padding:2px 0}
+.disclaimer{margin-top:30px;padding:16px;border:1px dashed #ffffff22;border-radius:12px;font-size:12px;color:var(--muted)}
+
+.toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(90px);background:var(--panel2);border:1px solid var(--neon);color:var(--text);padding:12px 20px;border-radius:12px;transition:.3s;z-index:99;font-size:14px}
+.toast.show{transform:translateX(-50%) translateY(0)}
+
+@media(max-width:840px){
+  .g3{grid-template-columns:1fr}
+  .stats-row{grid-template-columns:repeat(2,1fr)}
+  .tokenomics{grid-template-columns:1fr}
+  .eras{grid-template-columns:repeat(2,1fr)}
+  footer .cols{grid-template-columns:1fr}
+  nav{display:none}
+}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="logo"><img src="/mascot.png" alt="WAGI-1">Wen<span class="tick">AGI</span></div>
+    <nav>
+      <a href="#how" data-i18n="nav_how">Как работает</a>
+      <a href="#tokenomics" data-i18n="nav_tokenomics">Токеномика</a>
+      <a href="#wall" data-i18n="nav_wall">Стена промптов</a>
+      <a href="#airdrop" data-i18n="nav_airdrop">Аирдроп</a>
+    </nav>
+    <button class="lang" id="langBtn">EN</button>
+    <a class="btn btn-neon" href="/app.html" data-i18n="nav_cta">Попробовать</a>
+  </div>
+</header>
+
+<div class="hero wrap">
+  <div class="pill"><span class="dot"></span><span data-i18n="pill">$WAGI — mainnet-ready · OpenAI-совместимый API</span></div>
+  <h1><span data-i18n="h1a">Старый вопрос крипты.</span><br><span class="grad" data-i18n="h1b">Новая единица интеллекта.</span></h1>
+  <p class="sub" data-i18n="sub">WenAGI — это токен для децентрализованного LLM-инференса. Каждый запрос к ИИ оплачивается в <b>$WAGI</b>, и <b>5% комиссии сжигается навсегда</b>. Чем больше человечество использует ИИ — тем меньше токенов существует. Спрос растёт. Supply падает. <b>WEN AGI? WEN MOON.</b></p>
+  <div class="hero-cta">
+    <a class="btn btn-neon" href="/app.html" data-i18n="cta1">🚀 Получить демо-ключ</a>
+    <button class="btn btn-ghost" id="shareBtn" data-i18n="cta2">📤 Поделиться прогрессом</button>
+  </div>
+
+  <div class="progress-card">
+    <div class="pc-top">
+      <div><span data-i18n="pc_live">ЖИВОЙ ПРОГРЕСС К AGI</span> · <span id="eraName">Chatbots</span></div>
+      <b id="progressPct">0.0%</b>
+    </div>
+    <div class="bar"><div class="bar-fill" id="barFill"></div></div>
+    <div class="era"><span id="eraQuip">it can talk</span><span class="mono" id="burnedLabel" data-i18n-pref="burned">—</span></div>
+    <div class="stats-row">
+      <div class="stat"><div class="v" id="stSupply">1,000,000,000</div><div class="k" data-i18n="st_supply">$WAGI в обращении</div></div>
+      <div class="stat"><div class="v" id="stBurned">0</div><div class="k" data-i18n="st_burned">Сожжено навсегда</div></div>
+      <div class="stat"><div class="v" id="stPrompts">0</div><div class="k" data-i18n="st_prompts">Промптов обработано</div></div>
+      <div class="stat"><div class="v" id="stFee">0.1+</div><div class="k" data-i18n="st_fee">WAGI за запрос</div></div>
+    </div>
+  </div>
+</div>
+
+<section id="how">
+  <div class="wrap">
+    <h2 data-i18n="how_h">Утилити, а не просто мем</h2>
+    <p class="lead" data-i18n="how_p">$WAGI — газ для машинного интеллекта: им оплачивают LLM-запросы, им же платят GPU-провайдерам. Экономика закрыта с двух сторон.</p>
+    <div class="grid g3">
+      <div class="card"><div class="num">01</div><h3 data-i18n="how1_h">Плати за промпт токенами</h3><p data-i18n="how1_p">OpenAI-совместимый endpoint: /v1/chat/completions. API-ключ, баланс в $WAGI — существующие агенты подключаются заменой одной строки.</p></div>
+      <div class="card"><div class="num">02</div><h3 data-i18n="how2_h">80/15/5 — всё прозрачно</h3><p data-i18n="how2_p">80% комиссии — GPU-провайдеру, 15% — DAO-казне, 5% сжигается ончейн. Ни одной скрытой комиссии.</p></div>
+      <div class="card"><div class="num">03</div><h3 data-i18n="how3_h">Дефляционный флайвил</h3><p data-i18n="how3_p">Рост использования ИИ = постоянное сжигание supply. Каждая эпоха прогресса фиксируется смарт-контрактом.</p></div>
+    </div>
+    <div class="grid g3" style="margin-top:16px">
+      <div class="card"><div class="num">ERC-20</div><h3 data-i18n="how4_h">Fixed supply 1B</h3><p data-i18n="how4_p">Без минта. Без инфляции. Только burn. Аудируемо на Base.</p></div>
+      <div class="card"><div class="num">EIP-2612</div><h3 data-i18n="how5_h">Gasless-клеймы</h3><p data-i18n="how5_p">Аирдроп и оплата по подписи — без газа для пользователя.</p></div>
+      <div class="card"><div class="num">SDK</div><h3 data-i18n="how6_h">Для ИИ-агентов</h3><p data-i18n="how6_p">Агент сам платит за свой инференс и отчитывается ончейн. Машины платят машинам.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="tokenomics">
+  <div class="wrap">
+    <h2 data-i18n="tk_h">Токеномика</h2>
+    <p class="lead" data-i18n="tk_p">1,000,000,000 $WAGI. Выпущены один раз. Всё дальнейшее — только распределение и сжигание.</p>
+    <div class="tokenomics">
+      <div class="donut-wrap">
+        <svg width="300" height="300" viewBox="0 0 42 42">
+          <circle cx="21" cy="21" r="15.9" fill="none" stroke="#ffffff10" stroke-width="6"/>
+          <circle cx="21" cy="21" r="15.9" fill="none" stroke="#39ff88" stroke-width="6" stroke-dasharray="40 60" stroke-dashoffset="25" stroke-linecap="butt"/>
+          <circle cx="21" cy="21" r="15.9" fill="none" stroke="#8b5cf6" stroke-width="6" stroke-dasharray="15 85" stroke-dashoffset="-15" stroke-linecap="butt"/>
+          <circle cx="21" cy="21" r="15.9" fill="none" stroke="#22d3ee" stroke-width="6" stroke-dasharray="15 85" stroke-dashoffset="-30" stroke-linecap="butt"/>
+          <circle cx="21" cy="21" r="15.9" fill="none" stroke="#f59e0b" stroke-width="6" stroke-dasharray="12 88" stroke-dashoffset="-45" stroke-linecap="butt"/>
+          <circle cx="21" cy="21" r="15.9" fill="none" stroke="#ff5470" stroke-width="6" stroke-dasharray="10 90" stroke-dashoffset="-57" stroke-linecap="butt"/>
+          <circle cx="21" cy="21" r="15.9" fill="none" stroke="#94a3b8" stroke-width="6" stroke-dasharray="8 92" stroke-dashoffset="-67" stroke-linecap="butt"/>
+          <text x="21" y="19" text-anchor="middle" font-size="4.4" fill="#e8e8f4" font-weight="700">1B</text>
+          <text x="21" y="24.5" text-anchor="middle" font-size="2.3" fill="#8a8aa8">$WAGI FOREVER</text>
+        </svg>
+      </div>
+      <div class="tk-rows">
+        <div class="tk"><i style="background:#39ff88"></i><div class="lbl" data-i18n="tk1">Инференс-награды сообществу<small data-i18n="tk1s">5 лет, за полезные вычисления</small></div><div class="pct">40%</div></div>
+        <div class="tk"><i style="background:#8b5cf6"></i><div class="lbl" data-i18n="tk2">Аирдроп виральной волны<small data-i18n="tk2s">квесты, мерkle-клейм, без газа</small></div><div class="pct">15%</div></div>
+        <div class="tk"><i style="background:#22d3ee"></i><div class="lbl" data-i18n="tk3">Ликвидность DEX/CEX<small data-i18n="tk3s">80/20 пулы, заблокировано на 2 года</small></div><div class="pct">15%</div></div>
+        <div class="tk"><i style="background:#f59e0b"></i><div class="lbl" data-i18n="tk4">Команда<small data-i18n="tk4s">клифф 6 мес, вестинг 24 мес</small></div><div class="pct">12%</div></div>
+        <div class="tk"><i style="background:#ff5470"></i><div class="lbl" data-i18n="tk5">DAO-казна<small data-i18n="tk5s">гранты, аудит, листинги</small></div><div class="pct">10%</div></div>
+        <div class="tk"><i style="background:#94a3b8"></i><div class="lbl" data-i18n="tk6">Ранние инвесторы<small data-i18n="tk6s">вестинг 18 мес</small></div><div class="pct">8%</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="wall">
+  <div class="wrap">
+    <h2 data-i18n="wall_h">Стена промптов <span class="grad" style="font-size:.55em;vertical-align:middle">live</span></h2>
+    <p class="lead" data-i18n="wall_p">Каждый запрос к сети попадает сюда — анонимно. Смотри, о чём спрашивает человечество, пока приближает AGI.</p>
+    <div class="wall" id="wallList"><div class="wall-item"><span class="q" data-i18n="wall_empty">Загрузка…</span></div></div>
+  </div>
+</section>
+
+<section id="eras">
+  <div class="wrap">
+    <h2 data-i18n="eras_h">10 эпох до AGI</h2>
+    <p class="lead" data-i18n="eras_p">Эпохи фиксируются смарт-контрактом по суммарному сожжённому $WAGI. Откат невозможен.</p>
+    <div class="eras" id="erasGrid"></div>
+  </div>
+</section>
+
+<section id="airdrop">
+  <div class="wrap">
+    <h2 data-i18n="air_h">Аирдроп: 15% supply</h2>
+    <p class="lead" data-i18n="air_p">Выполняй квесты — получай очки. Снапшот перед TGE, клейм без газа (permit). Каждое очко = аллокация.</p>
+    <div class="airdrop-box quests" id="quests">
+      <label class="quest"><input type="checkbox"><div class="qq"><b data-i18n="q1h">Подписаться на X и включить колокольчик</b><span data-i18n="q1p">Форма сбора хэндлов — в закрепе канала</span></div><div class="pts">100</div></label>
+      <label class="quest"><input type="checkbox"><div class="qq"><b data-i18n="q2h">Ретвитнуть баннер «WEN AGI?» с тегом #WenAGI</b><span data-i18n="q2p">Вирусная волна: карточка прогресса репостится в 1 клик</span></div><div class="pts">150</div></label>
+      <label class="quest"><input type="checkbox"><div class="qq"><b data-i18n="q3h">Отправить 5 промптов в плейграунде</b><span data-i18n="q3p">Каждый сжигает $WAGI и двигает бар — утилити-квест</span></div><div class="pts">200</div></label>
+      <label class="quest"><input type="checkbox"><div class="qq"><b data-i18n="q4h">Пригласить 3 друзей по реферальной ссылке</b><span data-i18n="q4p">+50 за каждого активного (отправил ≥1 промпт)</span></div><div class="pts">150</div></label>
+      <label class="quest"><input type="checkbox"><div class="qq"><b data-i18n="q5h">Задеплоить агента на SDK в тестнете Base</b><span data-i18n="q5p">Лучший агент недели получает x10 множитель</span></div><div class="pts">500</div></label>
+      <label class="quest"><input type="checkbox"><div class="qq"><b data-i18n="q6h">Мем недели в Discord</b><span data-i18n="q6p">Голосование сообщества, топ-3 получают очки</span></div><div class="pts">300</div></label>
+    </div>
+    <p style="margin-top:16px;font-family:var(--mono);color:var(--neon)" id="questScore"></p>
+  </div>
+</section>
+
+<section id="roadmap">
+  <div class="wrap">
+    <h2 data-i18n="rm_h">Дорожная карта</h2>
+    <div class="grid g2 roadmap" style="margin-top:30px">
+      <div class="phase done"><span>PHASE 0 — DONE</span><b data-i18n="rm0h">Контракты + плейграунд</b><p data-i18n="rm0p">Смарт-контракты написаны и протестированы (21 тест), демо-шлюз работает прямо на этой странице.</p></div>
+      <div class="phase"><span>PHASE 1 — T-14 дней</span><b data-i18n="rm1h">Виральная волна</b><p data-i18n="rm1p">Квесты, стена промптов, карточки прогресса. 100K подписчиков до TGE.</p></div>
+      <div class="phase"><span>PHASE 2 — TGE</span><b data-i18n="rm2h">Деплой на Base + DEX</b><p data-i18n="rm2p">Аудит, деплой, 80/20 пул, клейм аирдропа через permit.</p></div>
+      <div class="phase"><span>PHASE 3 — T+30 дней</span><b data-i18n="rm3h">Главныйнет-шлюз</b><p data-i18n="rm3p">Реальные модели за $WAGI, ончейн-сеттлемент каждого запроса, SDK для агентов.</p></div>
+      <div class="phase"><span>PHASE 4 — T+90 дней</span><b data-i18n="rm4h">Рынок GPU</b><p data-i18n="rm4p">Любой сдаёт свою видеокарту в сеть и зарабатывает $WAGI. Proof-of-useful-work.</p></div>
+      <div class="phase"><span>PHASE 5 — WEN</span><b data-i18n="rm5h">AGI</b><p data-i18n="rm5p">Прогресс-бар дойдёт до конца. Мы обещаем ничего не обещать.</p></div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap cols">
+    <div>
+      <div class="logo" style="margin-bottom:12px"><img src="/mascot.png" alt="">Wen<span class="tick">AGI</span></div>
+      <p data-i18n="foot_about">$WAGI — газ для машинного интеллекта. Каждый промпт сжигает токены навсегда. NFA.</p>
+    </div>
+    <div>
+      <h4 data-i18n="foot_product">Продукт</h4>
+      <a href="/app.html" data-i18n="foot_playground">Плейграунд</a>
+      <a href="#tokenomics" data-i18n="foot_tokenomics">Токеномика</a>
+      <a href="#airdrop" data-i18n="foot_airdrop">Аирдроп</a>
+    </div>
+    <div>
+      <h4 data-i18n="foot_devs">Разработчикам</h4>
+      <a href="#" id="footDocs" data-i18n="foot_docs">Документация</a>
+      <a href="#" id="footGithub">GitHub</a>
+      <a href="#" id="footX">X / Twitter</a>
+    </div>
+  </div>
+  <div class="wrap disclaimer" data-i18n="disclaimer">Это демонстрационный проект. Криптовалюты волатильны; ничего здесь не является финансовой или инвестиционной рекомендацией. Делайте собственное исследование (DYOR).</div>
+</footer>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ── i18n ─────────────────────────────────────────────────────────────── */
+const I18N = {
+  ru: {
+    nav_how:"Как работает", nav_tokenomics:"Токеномика", nav_wall:"Стена промптов", nav_airdrop:"Аирдроп", nav_cta:"Попробовать",
+    pill:"$WAGI — mainnet-ready · OpenAI-совместимый API",
+    h1a:"Старый вопрос крипты.", h1b:"Новая единица интеллекта.",
+    sub:'WenAGI — это токен для децентрализованного LLM-инференса. Каждый запрос к ИИ оплачивается в <b>$WAGI</b>, и <b>5% комиссии сжигается навсегда</b>. Чем больше человечество использует ИИ — тем меньше токенов существует. Спрос растёт. Supply падает. <b>WEN AGI? WEN MOON.</b>',
+    cta1:"🚀 Получить демо-ключ", cta2:"📤 Поделиться прогрессом",
+    pc_live:"ЖИВОЙ ПРОГРЕСС К AGI", burned:" сожжено",
+    st_supply:"$WAGI в обращении", st_burned:"Сожжено навсегда", st_prompts:"Промптов обработано", st_fee:"WAGI за запрос",
+    how_h:"Утилити, а не просто мем",
+    how_p:"$WAGI — газ для машинного интеллекта: им оплачивают LLM-запросы, им же платят GPU-провайдерам. Экономика закрыта с двух сторон.",
+    how1_h:"Плати за промпт токенами", how1_p:"OpenAI-совместимый endpoint: /v1/chat/completions. API-ключ, баланс в $WAGI — существующие агенты подключаются заменой одной строки.",
+    how2_h:"80/15/5 — всё прозрачно", how2_p:"80% комиссии — GPU-провайдеру, 15% — DAO-казне, 5% сжигается ончейн. Ни одной скрытой комиссии.",
+    how3_h:"Дефляционный флайвил", how3_p:"Рост использования ИИ = постоянное сжигание supply. Каждая эпоха прогресса фиксируется смарт-контрактом.",
+    how4_h:"Fixed supply 1B", how4_p:"Без минта. Без инфляции. Только burn. Аудируемо на Base.",
+    how5_h:"Gasless-клеймы", how5_p:"Аирдроп и оплата по подписи — без газа для пользователя.",
+    how6_h:"Для ИИ-агентов", how6_p:"Агент сам платит за свой инференс и отчитывается ончейн. Машины платят машинам.",
+    tk_h:"Токеномика", tk_p:"1,000,000,000 $WAGI. Выпущены один раз. Всё дальнейшее — только распределение и сжигание.",
+    tk1:"Инференс-награды сообществу", tk1s:"5 лет, за полезные вычисления",
+    tk2:"Аирдроп виральной волны", tk2s:"merkle-клейм, без газа",
+    tk3:"Ликвидность DEX/CEX", tk3s:"80/20 пулы, заблокировано на 2 года",
+    tk4:"Команда", tk4s:"клифф 6 мес, вестинг 24 мес",
+    tk5:"DAO-казна", tk5s:"гранты, аудит, листинги",
+    tk6:"Ранние инвесторы", tk6s:"вестинг 18 мес",
+    wall_h:'Стена промптов', wall_p:"Каждый запрос к сети попадает сюда — анонимно. Смотри, о чём спрашивает человечество, пока приближает AGI.",
+    wall_empty:"Пока тихо. Будь первым — напиши промпт в плейграунде.",
+    eras_h:"10 эпох до AGI", eras_p:"Эпохи фиксируются смарт-контрактом по суммарному сожжённому $WAGI. Откат невозможен.",
+    air_h:"Аирдроп: 15% supply", air_p:"Выполняй квесты — получай очки. Снапшот перед TGE, клейм без газа (permit). Каждое очко = аллокация.",
+    q1h:"Подписаться на X и включить колокольчик", q1p:"Форма сбора хэндлов — в закрепе канала",
+    q2h:'Ретвитнуть баннер «WEN AGI?» с тегом #WenAGI', q2p:"Вирусная волна: карточка прогресса репостится в 1 клик",
+    q3h:"Отправить 5 промптов в плейграунде", q3p:"Каждый сжигает $WAGI и двигает бар — утилити-квест",
+    q4h:"Пригласить 3 друзей по реферальной ссылке", q4p:"+50 за каждого активного (отправил ≥1 промпт)",
+    q5h:"Задеплоить агента на SDK в тестнете Base", q5p:"Лучший агент недели получает x10 множитель",
+    q6h:"Мем недели в Discord", q6p:"Голосование сообщества, топ-3 получают очки",
+    score:"Очки аирдропа:",
+    rm_h:"Дорожная карта",
+    rm0h:"Контракты + плейграунд", rm0p:"Смарт-контракты написаны и протестированы (21 тест), демо-шлюз работает прямо на этой странице.",
+    rm1h:"Виральная волна", rm1p:"Квесты, стена промптов, карточки прогресса. 100K подписчиков до TGE.",
+    rm2h:"Деплой на Base + DEX", rm2p:"Аудит, деплой, 80/20 пул, клейм аирдропа через permit.",
+    rm3h:"Главныйнет-шлюз", rm3p:"Реальные модели за $WAGI, ончейн-сеттлемент каждого запроса, SDK для агентов.",
+    rm4h:"Рынок GPU", rm4p:"Любой сдаёт свою видеокарту в сеть и зарабатывает $WAGI. Proof-of-useful-work.",
+    rm5h:"AGI", rm5p:"Прогресс-бар дойдёт до конца. Мы обещаем ничего не обещать.",
+    foot_about:"$WAGI — газ для машинного интеллекта. Каждый промпт сжигает токены навсегда. NFA.",
+    foot_product:"Продукт", foot_playground:"Плейграунд", foot_tokenomics:"Токеномика", foot_airdrop:"Аирдроп",
+    foot_devs:"Разработчикам", foot_docs:"Документация",
+    disclaimer:"Это демонстрационный проект. Криптовалюты волатильны; ничего здесь не является финансовой или инвестиционной рекомендацией. Делайте собственное исследование (DYOR).",
+    toast_shared:"Карточка прогресса сгенерирована — качай и постись!",
+    toast_check:"Квест отмечен",
+  },
+  en: {
+    nav_how:"How it works", nav_tokenomics:"Tokenomics", nav_wall:"Prompt wall", nav_airdrop:"Airdrop", nav_cta:"Try it",
+    pill:"$WAGI — mainnet-ready · OpenAI-compatible API",
+    h1a:"Crypto's oldest question.", h1b:"A new unit of intelligence.",
+    sub:'WenAGI powers decentralized LLM inference. Every AI request is paid in <b>$WAGI</b>, and <b>5% of every fee is burned forever</b>. The more humanity uses AI, the fewer tokens exist. Demand grows. Supply shrinks. <b>WEN AGI? WEN MOON.</b>',
+    cta1:"🚀 Get a demo key", cta2:"📤 Share the progress",
+    pc_live:"LIVE PROGRESS TO AGI", burned:" burned",
+    st_supply:"$WAGI circulating", st_burned:"Burned forever", st_prompts:"Prompts served", st_fee:"WAGI per request",
+    how_h:"Utility, not just a meme",
+    how_p:"$WAGI is gas for machine intelligence: LLM calls are paid with it, GPU providers are paid in it. The economy closes from both sides.",
+    how1_h:"Pay per prompt in tokens", how1_p:"OpenAI-compatible endpoint: /v1/chat/completions. API key, balance in $WAGI — existing agents switch by changing one line.",
+    how2_h:"80/15/5 — fully visible", how2_p:"80% of each fee to the GPU provider, 15% to the DAO treasury, 5% burned on-chain. Zero hidden fees.",
+    how3_h:"Deflationary flywheel", how3_p:"AI usage growth = permanent supply burn. Every progress era is locked by smart contract.",
+    how4_h:"Fixed supply 1B", how4_p:"No mint. No inflation. Burn only. Auditable on Base.",
+    how5_h:"Gasless claims", how5_p:"Airdrop and payments via permit signature — users never pay gas.",
+    how6_h:"For AI agents", how6_p:"Agents pay for their own inference and settle on-chain. Machines pay machines.",
+    tk_h:"Tokenomics", tk_p:"1,000,000,000 $WAGI. Minted once. Everything after is distribution and burning.",
+    tk1:"Community inference rewards", tk1s:"5 years, for useful compute",
+    tk2:"Viral airdrop wave", tk2s:"merkle claim, gasless",
+    tk3:"DEX/CEX liquidity", tk3s:"80/20 pools, locked 2 years",
+    tk4:"Team", tk4s:"6mo cliff, 24mo vesting",
+    tk5:"DAO treasury", tk5s:"grants, audits, listings",
+    tk6:"Early investors", tk6s:"18mo vesting",
+    wall_h:"Prompt wall", wall_p:"Every request lands here — anonymized. Watch what humanity asks while it approaches AGI.",
+    wall_empty:"Quiet so far. Be the first — send a prompt in the playground.",
+    eras_h:"10 eras to AGI", eras_p:"Eras are fixed by smart contract at cumulative-burn thresholds. No rollbacks.",
+    air_h:"Airdrop: 15% of supply", air_p:"Complete quests, earn points. Snapshot before TGE, gasless permit claim. Every point = allocation.",
+    q1h:"Follow on X and ring the bell", q1p:"Handle collection form — pinned on the channel",
+    q2h:'RT the "WEN AGI?" banner with #WenAGI', q2p:"Viral wave: progress card reposts in one click",
+    q3h:"Send 5 prompts in the playground", q3p:"Each one burns $WAGI and moves the bar — a utility quest",
+    q4h:"Invite 3 friends via referral link", q4p:"+50 for each active one (≥1 prompt sent)",
+    q5h:"Deploy an agent with the SDK on Base testnet", q5p:"Agent of the week gets a x10 multiplier",
+    q6h:"Meme of the week in Discord", q6p:"Community vote, top-3 earn points",
+    score:"Airdrop points:",
+    rm_h:"Roadmap",
+    rm0h:"Contracts + playground", rm0p:"Smart contracts written and tested (21 tests), demo gateway running on this very page.",
+    rm1h:"Viral wave", rm1p:"Quests, prompt wall, progress cards. 100K followers pre-TGE.",
+    rm2h:"Base deploy + DEX", rm2p:"Audit, deploy, 80/20 pool, gasless airdrop claims.",
+    rm3h:"Mainnet gateway", rm3p:"Real models for $WAGI, on-chain settlement of every request, agent SDK.",
+    rm4h:"GPU marketplace", rm4p:"Anyone rents their GPU to the network and earns $WAGI. Proof-of-useful-work.",
+    rm5h:"AGI", rm5p:"The bar reaches the end. We promise to promise nothing.",
+    foot_about:"$WAGI — gas for machine intelligence. Every prompt burns tokens forever. NFA.",
+    foot_product:"Product", foot_playground:"Playground", foot_tokenomics:"Tokenomics", foot_airdrop:"Airdrop",
+    foot_devs:"Developers", foot_docs:"Documentation",
+    disclaimer:"This is a demo project. Crypto is volatile; nothing here is financial advice. DYOR.",
+    toast_shared:"Progress card generated — download & post it!",
+    toast_check:"Quest checked",
+  }
+};
+let lang = (navigator.language || "ru").startsWith("ru") ? "ru" : "en";
+function applyLang() {
+  document.querySelectorAll("[data-i18n]").forEach((el) => {
+    const v = I18N[lang][el.dataset.i18n];
+    if (v) el.innerHTML = v;
+  });
+  document.documentElement.lang = lang;
+  document.getElementById("langBtn").textContent = lang === "ru" ? "EN" : "RU";
+  renderEras();
+  updateScore();
+}
+document.getElementById("langBtn").onclick = () => { lang = lang === "ru" ? "en" : "ru"; applyLang(); };
+
+/* ── live stats ───────────────────────────────────────────────────────── */
+let LATEST = null;
+const fmt = (n) => Number(n).toLocaleString(lang === "ru" ? "ru-RU" : "en-US");
+async function tick() {
+  try {
+    const s = await (await fetch("/api/stats")).json();
+    LATEST = s;
+    document.getElementById("progressPct").textContent = (s.progressPct ?? 0).toFixed(1) + "%";
+    document.getElementById("barFill").style.width = (s.progressBps / 100) + "%";
+    document.getElementById("eraName").textContent = s.era.name;
+    document.getElementById("eraQuip").textContent = '"' + s.era.quip + '"';
+    document.getElementById("burnedLabel").textContent = "🔥 " + fmt(s.burnedTotal) + " $WAGI" + (I18N[lang].burned || " burned");
+    document.getElementById("stSupply").textContent = fmt(s.supply);
+    document.getElementById("stBurned").textContent = fmt(s.burnedTotal);
+    document.getElementById("stPrompts").textContent = fmt(s.prompts);
+  } catch {}
+}
+setInterval(tick, 5000);
+tick();
+
+/* ── wall ─────────────────────────────────────────────────────────────── */
+async function tickWall() {
+  try {
+    const w = await (await fetch("/api/wall")).json();
+    const list = document.getElementById("wallList");
+    if (!w.items.length) {
+      list.innerHTML = '<div class="wall-item"><span class="q">' + I18N[lang].wall_empty + '</span></div>';
+    } else {
+      list.innerHTML = w.items
+        .map((i) => `<div class="wall-item"><span class="q">${escapeHtml(i.q)}</span><span class="meta">🔥${i.burned?.toFixed(4) ?? "?"} WAGI · ${new Date(i.ts).toLocaleTimeString()}</span></div>`)
+        .join("");
+    }
+  } catch {}
+}
+setInterval(tickWall, 5000);
+tickWall();
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+/* ── eras grid ────────────────────────────────────────────────────────── */
+let ERAS = [];
+function renderEras() {
+  if (!ERAS.length) return;
+  const burned = LATEST?.burnedTotal ?? 0;
+  document.getElementById("erasGrid").innerHTML = ERAS.map((e, i) => {
+    const done = burned >= e.burned;
+    return `<div class="era-t ${done ? "done" : ""}"><div class="p">${i === 0 ? "0%" : (e.burned / 10000).toFixed(0) + "K 🔥"}</div><b>${e.name}</b><span>"${e.quip}"</span></div>`;
+  }).join("");
+}
+(async () => {
+  try { ERAS = (await (await fetch("/api/stats")).json()).eras; renderEras(); } catch {}
+})();
+
+/* ── quest score ──────────────────────────────────────────────────────── */
+function updateScore() {
+  const pts = [...document.querySelectorAll("#quests input")].reduce((a, cb, i) => a + (cb.checked ? [100, 150, 200, 150, 500, 300][i] : 0), 0);
+  document.getElementById("questScore").textContent = I18N[lang].score + " " + pts + " 🎯";
+}
+document.querySelectorAll("#quests input").forEach((cb) => {
+  cb.onchange = () => { updateScore(); localStorage.setItem("wagi_quests", JSON.stringify([...document.querySelectorAll('#quests input')].map(c => c.checked))); };
+});
+const saved = JSON.parse(localStorage.getItem("wagi_quests") || "[]");
+saved.forEach((v, i) => { const cb = document.querySelectorAll("#quests input")[i]; if (cb) cb.checked = v; });
+
+/* ── toast ────────────────────────────────────────────────────────────── */
+function toast(msg) {
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), 2600);
+}
+
+/* ── share progress card (canvas → PNG) ───────────────────────────────── */
+document.getElementById("shareBtn").onclick = async () => {
+  const pct = LATEST ? LATEST.progressPct.toFixed(1) : "0.0";
+  const burned = LATEST ? Math.floor(LATEST.burnedTotal).toLocaleString("en-US") : "0";
+  const c = document.createElement("canvas");
+  c.width = 1200; c.height = 630;
+  const x = c.getContext("2d");
+  const g = x.createLinearGradient(0, 0, 1200, 630);
+  g.addColorStop(0, "#0a0a18"); g.addColorStop(1, "#161033");
+  x.fillStyle = g; x.fillRect(0, 0, 1200, 630);
+  for (let i = 0; i < 60; i++) {
+    x.fillStyle = "rgba(57,255,136," + (Math.random() * 0.06) + ")";
+    x.fillRect(Math.random() * 1200, Math.random() * 630, 2, 2);
+  }
+  x.fillStyle = "#39ff88"; x.font = "700 30px monospace"; x.fillText("WenAGI · $WAGI", 70, 90);
+  x.fillStyle = "#e8e8f4"; x.font = "900 120px sans-serif";
+  x.fillText("WEN AGI?", 70, 250);
+  x.fillStyle = "#8a8aa8"; x.font = "30px monospace";
+  x.fillText("my prompts burned " + burned + " $WAGI — the bar is at " + pct + "%", 70, 330);
+  x.fillStyle = "#ffffff18"; x.fillRect(70, 400, 1060, 34);
+  const fg = x.createLinearGradient(70, 0, 1130, 0);
+  fg.addColorStop(0, "#39ff88"); fg.addColorStop(1, "#22d3ee");
+  x.fillStyle = fg; x.fillRect(70, 400, Math.max(18, 1060 * (LATEST ? LATEST.progressBps / 10000 : 0)), 34);
+  x.fillStyle = "#8b5cf6"; x.font = "34px monospace";
+  x.fillText("join the burn → wenagi.ai", 70, 510);
+  const a = document.createElement("a");
+  a.download = "wenagi-progress.png";
+  a.href = c.toDataURL("image/png");
+  a.click();
+  toast(I18N[lang].toast_shared);
+};
+
+applyLang();
+</script>
+</body>
+</html>

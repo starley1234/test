@@ -1,0 +1,18 @@
+# deps & build
+node_modules/
+artifacts/
+cache/
+coverage/
+
+# secrets & local state
+.env
+data/
+airdrop.json
+airdrop-root.txt
+airdrop-proofs.json
+*.pem
+*.key
+
+# os junk
+.DS_Store
+*.log

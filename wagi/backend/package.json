@@ -1,0 +1,12 @@
+{
+  "name": "wagi-gateway",
+  "version": "1.0.0",
+  "description": "WenAGI Gateway — OpenAI-compatible LLM inference paid in $WAGI (zero runtime deps).",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test test/*.test.js"
+  },
+  "engines": { "node": ">=18" }
+}

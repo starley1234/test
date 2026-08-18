@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  contracts:
+    name: Contracts — compile & test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: wagi/contracts
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: wagi/contracts/package-lock.json
+      - run: npm ci
+      - run: npm run compile
+      - run: npm test
+
+  gateway:
+    name: Gateway — lint & test
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: wagi/backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm test
+
+  docker:
+    name: Gateway image builds
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t wagi-gateway wagi/backend
