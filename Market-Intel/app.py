@@ -1,5 +1,5 @@
 from __future__ import annotations
-import os, re, sqlite3
+import os, re, sqlite3, hashlib
 from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
@@ -59,7 +59,7 @@ def eis(p:Notice):
 @app.post('/api/manual')
 def manual(p:TextLead):
  if len(p.text)<30: raise HTTPException(422,'Нужно не менее 30 символов текста документа.')
- x={'source':'Пользовательский первоисточник','external_id':p.url or 'manual:'+str(hash(p.title+p.text)),'title':p.title,'url':p.url or 'about:blank','body':p.text,'published':''};return {'added':upsert([x])}
+ x={'source':'Пользовательский первоисточник','external_id':p.url or 'manual:'+hashlib.sha256((p.title+p.text).encode()).hexdigest(),'title':p.title,'url':p.url or 'about:blank','body':p.text,'published':''};return {'added':upsert([x])}
 @app.get('/api/config')
 def config(): return {'eis':eis_service_info(),'b2b_center':b2b_info(),'docs':'/docs'}
 @app.get('/api/lead/{lead_id}')
