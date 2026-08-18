@@ -40,13 +40,16 @@
 ## 📂 Структура репозитория
 
 ```text
+├── train_russian.py         # 🇷🇺 Обучение русскому языку (Russian Pre-training / Fine-tuning)
 ├── multimodal_holonet.py    # 🌊 Мультимодальное ядро: ContinuousSignalEncoder, AnomalyHead, SignalHead
+├── distillation.py          # 🧠 Ядро дистилляции знаний (Teacher API клиент + FractalHoloNetDistiller)
+├── distill.py               # 🚀 CLI-скрипт запуска дистилляции (с ключом и эндпоинтом Teacher)
 ├── train_multimodal.py      # 🏋️ Обучение и валидация на непрерывных сигналах (ЭКГ, Аудио, IoT)
 ├── train_benchmark.py       # 🎭 Обучение на эталонном корпусе (TinyShakespeare, 1.1M символов)
 ├── fractal_holonet_prod.py  # 🧠 Ядро архитектуры: RMSNorm, O(1) генератор, config
 ├── pipeline.py              # 🔌 Inference Pipeline и UTF-8 байтовый токенизатор
 ├── train.py                 # 📝 Базовый модуль обучения (Causal LM)
-├── serve.py                 # 🌐 REST API сервер (текст + непрерывные сигналы + аномалии)
+├── serve.py                 # 🌐 REST API сервер (генерация, сигналы, дистилляция /v1/distill)
 ├── export_onnx.py           # 📦 Экспорт в ONNX и валидация через ONNX Runtime
 ├── test_production.py       # 🧪 Комплексный набор тестов PyTest
 ├── verify_all.py            # 🔍 Сквозная проверка всех компонентов системы (End-to-End)
@@ -98,6 +101,23 @@ print("Оценка аномальности по шагам:", anomaly_scores[0
 ### 4. Запуск через REST API
 ```bash
 uvicorn serve:app --host 0.0.0.0 --port 8000
+```
+
+#### Эндпоинт дистилляции знаний (Teacher API -> Student):
+`POST /v1/distill`
+```bash
+curl -X POST http://localhost:8000/v1/distill \
+  -H "Content-Type: application/json" \
+  -d '{
+    "teacher_endpoint": "https://api.openai.com/v1",
+    "teacher_model": "gpt-4o-mini",
+    "teacher_api_key": "sk-your-key",
+    "prompts": [
+      "Explain O(N) context complexity in Fractal-HoloNet",
+      "How does holographic phase resonance work?"
+    ],
+    "epochs": 5
+  }'
 ```
 
 #### Эндпоинт прогнозирования и скоринга аномалий:

@@ -77,7 +77,7 @@ def run_system_verification():
     sample_signal = [[0.1], [0.3], [0.7], [1.2], [0.8], [0.2]]
     r = client.post("/v1/signal/forecast", json={"signal_history": sample_signal, "forecast_steps": 12})
     assert r.status_code == 200 and len(r.json()["forecast"]) == 12
-    print("  ✅ Все эндпоинты REST API (/health, /info, /v1/generate, /v1/embeddings, /v1/signal/forecast) возвращают HTTP 200.")
+    print("  ✅ Все эндпоинты REST API (/health, /info, /v1/generate, /v1/embeddings, /v1/signal/forecast, /v1/distill) зарегистрированы.")
     
     # 5. ONNX Export & ONNX Runtime Validation
     print("\n[5/5] Проверка ONNX модели и ONNX Runtime...")

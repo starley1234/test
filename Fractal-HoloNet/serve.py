@@ -1,6 +1,6 @@
 import os
 import time
-from typing import List, Optional
+from typing import List, Dict, Optional, Any
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel, Field
@@ -9,6 +9,7 @@ import torch
 from fractal_holonet_prod import ProductionFractalHoloNet, FractalHoloNetConfig
 from multimodal_holonet import MultimodalFractalHoloNet, MultimodalSignalConfig
 from pipeline import SimpleProductionTokenizer, FractalHoloNetInferencePipeline
+from distillation import TeacherAPIClient, FractalHoloNetDistiller
 
 TEXT_MODEL_DIR = os.getenv("TEXT_MODEL_DIR", "./checkpoints/fractal_holonet_base")
 SIGNAL_MODEL_DIR = os.getenv("SIGNAL_MODEL_DIR", "./checkpoints/fractal_holonet_multimodal")
@@ -52,9 +53,9 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(
-    title="Fractal-HoloNet Multimodal AI Service",
-    description="Universal continuous signal & text intelligence using complex phase resonance",
-    version="2.0.0",
+    title="Fractal-HoloNet Multimodal & Distillation AI Service",
+    description="Universal continuous signal & text intelligence with Knowledge Distillation from Teacher LLMs",
+    version="2.1.0",
     lifespan=lifespan
 )
 
@@ -97,21 +98,43 @@ class SignalForecastResponse(BaseModel):
     anomaly_scores: List[float]
     latency_ms: float
 
+# Distillation Schemas
+class DistillationAPIRequest(BaseModel):
+    teacher_endpoint: str = Field(..., description="OpenAI-совместимый URL (e.g. https://api.openai.com/v1, https://openrouter.ai/api/v1)", json_schema_extra={"example": "https://api.openai.com/v1"})
+    teacher_model: str = Field(..., description="Название модели Teacher (e.g. gpt-4o-mini, deepseek-chat, mistral-7b)", json_schema_extra={"example": "gpt-4o-mini"})
+    teacher_api_key: str = Field(..., description="API-ключ доступа к Teacher модели")
+    prompts: List[str] = Field(..., min_length=1, description="Список задач/промптов для генерации обучающего датасета учителем")
+    system_prompt: Optional[str] = Field(default="You are an expert AI providing concise and accurate reasoning.")
+    epochs: int = Field(default=5, ge=1, le=50)
+    batch_size: int = Field(default=4, ge=1, le=64)
+    learning_rate: float = Field(default=1e-3, ge=1e-5, le=1e-2)
+
+class DistillationResponse(BaseModel):
+    status: str
+    teacher_model: str
+    samples_distilled: int
+    epochs: int
+    final_loss: float
+    duration_sec: float
+    checkpoint_dir: str
+
 class ModelInfoResponse(BaseModel):
     architecture: str
     modalities: List[str]
+    features: List[str]
     device: str
     status: str
 
 @app.get("/health", status_code=status.HTTP_200_OK)
 def health_check():
-    return {"status": "healthy", "service": "Fractal-HoloNet Multimodal Inference", "timestamp": time.time()}
+    return {"status": "healthy", "service": "Fractal-HoloNet Multimodal & Distillation Inference", "timestamp": time.time()}
 
 @app.get("/info", response_model=ModelInfoResponse)
 def model_info():
     return {
         "architecture": "Multimodal Fractal Gated Holographic Resonance Network",
         "modalities": ["text", "raw_audio", "ecg_biomedical", "iot_telemetry", "continuous_streams"],
+        "features": ["O(N) context", "O(1) step inference", "continuous signal forecasting", "knowledge distillation"],
         "device": "cpu",
         "status": "ready"
     }
@@ -154,15 +177,11 @@ def forecast_signal(req: SignalForecastRequest):
         init_services()
         
     t0 = time.time()
-    # (1, T_hist, C)
     sig_tensor = torch.tensor([req.signal_history], dtype=torch.float32)
     
     with torch.no_grad():
-        # 1. Anomaly scoring on observed history
         _, anom_scores_tensor, _ = multimodal_model.forward_continuous(sig_tensor)
         anom_scores = anom_scores_tensor[0, :, 0].cpu().tolist()
-        
-        # 2. O(1) Real-time forecasting
         forecast_tensor = multimodal_model.forecast_stream(sig_tensor, forecast_steps=req.forecast_steps)
         forecast_list = forecast_tensor[0].cpu().tolist()
         
@@ -175,3 +194,49 @@ def forecast_signal(req: SignalForecastRequest):
         "anomaly_scores": anom_scores,
         "latency_ms": round(latency_ms, 2)
     }
+
+@app.post("/v1/distill", response_model=DistillationResponse)
+def distill_model(req: DistillationAPIRequest):
+    """
+    Эндпоинт дистилляции знаний: обращается к Teacher модели через endpoint, model и api_key,
+    генерирует эталонные ответы/рассуждения и обучает локальную модель Fractal-HoloNet.
+    """
+    global pipeline
+    if pipeline is None:
+        init_services()
+        
+    try:
+        teacher_client = TeacherAPIClient(
+            endpoint=req.teacher_endpoint,
+            api_key=req.teacher_api_key,
+            model_name=req.teacher_model
+        )
+        distiller = FractalHoloNetDistiller(
+            student_model=pipeline.model,
+            tokenizer=pipeline.tokenizer,
+            teacher_client=teacher_client,
+            lr=req.learning_rate,
+            device="cpu"
+        )
+        result = distiller.distill_from_teacher_api(
+            prompts=req.prompts,
+            system_prompt=req.system_prompt,
+            epochs=req.epochs,
+            batch_size=req.batch_size,
+            save_dir=TEXT_MODEL_DIR
+        )
+        
+        # Перезагружаем пайплайн со свежими весами
+        pipeline = FractalHoloNetInferencePipeline(model_dir=TEXT_MODEL_DIR, device="cpu")
+        
+        return {
+            "status": "success",
+            "teacher_model": req.teacher_model,
+            "samples_distilled": len(req.prompts),
+            "epochs": result["epochs"],
+            "final_loss": result["final_loss"],
+            "duration_sec": result["duration_sec"],
+            "checkpoint_dir": result["save_dir"]
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Distillation failed: {str(e)}")

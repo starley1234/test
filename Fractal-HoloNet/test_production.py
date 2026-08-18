@@ -86,3 +86,27 @@ def test_fastapi_multimodal_endpoints():
     assert res["forecast_steps"] == 8
     assert len(res["anomaly_scores"]) == 6
     assert "latency_ms" in res
+
+def test_distillation_pipeline(monkeypatch):
+    from distillation import TeacherAPIClient, FractalHoloNetDistiller
+    
+    # Мок генерации ответов Teacher API для независимого теста
+    def mock_generate(self, prompt, system_prompt=None, max_tokens=256, temperature=0.7):
+        return f"Distilled answer for: {prompt}"
+        
+    monkeypatch.setattr(TeacherAPIClient, "generate_completion", mock_generate)
+    
+    tokenizer = SimpleProductionTokenizer()
+    config = FractalHoloNetConfig(vocab_size=300, d_model=64, n_layers=2, d_ff=128)
+    student = ProductionFractalHoloNet(config)
+    teacher = TeacherAPIClient(endpoint="https://api.openai.com/v1", api_key="sk-test", model_name="gpt-4o-mini")
+    
+    distiller = FractalHoloNetDistiller(student_model=student, tokenizer=tokenizer, teacher_client=teacher, lr=1e-3)
+    res = distiller.distill_from_teacher_api(
+        prompts=["What is Fractal-HoloNet?", "Explain phase resonance."],
+        epochs=2,
+        batch_size=2
+    )
+    assert res["status"] == "success"
+    assert res["epochs"] == 2
+    assert res["final_loss"] > 0.0
