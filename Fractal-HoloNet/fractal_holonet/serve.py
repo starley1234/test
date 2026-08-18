@@ -12,6 +12,7 @@ from fractal_holonet.multimodal import MultimodalFractalHoloNet, MultimodalSigna
 from fractal_holonet.tokenizer import SimpleProductionTokenizer, FractalHoloNetInferencePipeline
 from fractal_holonet.distillation import TeacherAPIClient, FractalHoloNetDistiller
 from fractal_holonet.self_train import SelfTrainLoop, SelfTrainService, SyntheticTeacher
+import fractal_holonet.registry as registry
 
 TEXT_MODEL_DIR = os.getenv("TEXT_MODEL_DIR", "./checkpoints/fractal_holonet_base")
 SIGNAL_MODEL_DIR = os.getenv("SIGNAL_MODEL_DIR", "./checkpoints/fractal_holonet_multimodal")
@@ -19,22 +20,37 @@ SIGNAL_MODEL_DIR = os.getenv("SIGNAL_MODEL_DIR", "./checkpoints/fractal_holonet_
 pipeline: Optional[FractalHoloNetInferencePipeline] = None
 multimodal_model: Optional[MultimodalFractalHoloNet] = None
 self_train_service: Optional[SelfTrainService] = None
+active_model_id: Optional[str] = None
 
 # Сериализация мутаций чекпоинта (дистилляция и self-training)
 train_lock = threading.Lock()
 
+
+def resolve_text_model_dir() -> str:
+    """Модель для текстового пайплайна: FH_MODEL_ID из реестра или TEXT_MODEL_DIR."""
+    model_id = os.getenv("FH_MODEL_ID", "")
+    if model_id:
+        if model_id == "active":
+            model_id = registry.get_active()
+            if not model_id:
+                raise RuntimeError("FH_MODEL_ID=active, но активная модель не задана в реестре")
+        return str(registry.model_dir(model_id))
+    return TEXT_MODEL_DIR
+
+
 def init_services():
     global pipeline, multimodal_model
-    # 1. Text Pipeline
-    os.makedirs(TEXT_MODEL_DIR, exist_ok=True)
-    cfg_path = os.path.join(TEXT_MODEL_DIR, "config.json")
+    # 1. Text Pipeline (реестр моделей или файловый каталог)
+    model_dir = resolve_text_model_dir()
+    os.makedirs(model_dir, exist_ok=True)
+    cfg_path = os.path.join(model_dir, "config.json")
     if not os.path.exists(cfg_path):
         config = FractalHoloNetConfig(vocab_size=300, d_model=128, n_layers=4, d_ff=384)
         model = ProductionFractalHoloNet(config)
-        model.save_pretrained(TEXT_MODEL_DIR)
+        model.save_pretrained(model_dir)
         tok = SimpleProductionTokenizer()
-        tok.save(os.path.join(TEXT_MODEL_DIR, "tokenizer.json"))
-    pipeline = FractalHoloNetInferencePipeline(model_dir=TEXT_MODEL_DIR, device="cpu")
+        tok.save(os.path.join(model_dir, "tokenizer.json"))
+    pipeline = FractalHoloNetInferencePipeline(model_dir=model_dir, device="cpu")
     
     # 2. Multimodal Continuous Signal Model
     if os.path.exists(SIGNAL_MODEL_DIR):
@@ -365,3 +381,50 @@ def self_train_status():
     if self_train_service is None:
         return {"running": False, "rounds": 0, "teacher_mode": "none", "last_result": None}
     return self_train_service.status()
+
+
+# ---------------------------------------------------------------------------
+# Реестр обученных моделей
+# ---------------------------------------------------------------------------
+class ActivateModelRequest(BaseModel):
+    model_id: Optional[str] = Field(default=None, description="id модели; None = сброс активации")
+
+
+@app.get("/v1/models")
+def registry_list():
+    """Список обученных моделей из реестра (метаданные + метрики)."""
+    try:
+        return {"active": registry.get_active(), "models": registry.list_models()}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Registry error: {str(e)}")
+
+
+@app.get("/v1/models/{model_id}")
+def registry_get(model_id: str):
+    try:
+        return registry.get_model(model_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Unknown model: {model_id}")
+
+
+@app.post("/v1/models/activate")
+def registry_activate(req: ActivateModelRequest):
+    """Переключает активную модель и перезагружает текстовый пайплайн."""
+    global pipeline, active_model_id
+    with train_lock:
+        try:
+            registry.activate(req.model_id)
+        except KeyError:
+            raise HTTPException(status_code=404, detail=f"Unknown model: {req.model_id}")
+        if req.model_id:
+            try:
+                pipeline = FractalHoloNetInferencePipeline(
+                    model_dir=str(registry.model_dir(req.model_id)), device="cpu"
+                )
+                active_model_id = req.model_id
+            except Exception as e:
+                raise HTTPException(status_code=500, detail=f"Failed to load model: {str(e)}")
+        else:
+            pipeline = FractalHoloNetInferencePipeline(model_dir=TEXT_MODEL_DIR, device="cpu")
+            active_model_id = None
+    return {"status": "activated", "model_id": req.model_id}

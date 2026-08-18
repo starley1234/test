@@ -66,18 +66,21 @@ class DistillationDataset(Dataset):
     def __init__(self, pairs: List[Dict[str, str]], tokenizer: SimpleProductionTokenizer, block_size: int = 128):
         self.block_size = block_size
         self.samples = []
-        
+
+        pad_id = tokenizer.pad_token_id
         for item in pairs:
-            # Формируем цепочку Промпт -> Рассуждение/Ответ Учителя
-            formatted_text = f"User: {item['prompt']}\nAssistant: {item['response']}\n<eos>\n"
-            token_ids = tokenizer.encode(formatted_text, add_bos=False)
-            
+            # Формируем цепочку Промпт -> Рассуждение/Ответ Учителя.
+            # <eos> — НАСТОЯЩИЙ спец-токен токенизатора, а не литеральная строка.
+            prefix = tokenizer.encode(f"User: {item['prompt']}\nAssistant: {item['response']}\n", add_bos=False)
+            suffix = tokenizer.encode("\n", add_bos=False)
+            token_ids = prefix + [tokenizer.eos_token_id] + suffix
+
             # Чанкуем на блоки фиксированной длины
             for i in range(0, len(token_ids) - 1, block_size):
                 chunk = token_ids[i:i + block_size + 1]
                 if len(chunk) < block_size + 1:
                     pad_len = block_size + 1 - len(chunk)
-                    chunk = chunk + [0] * pad_len
+                    chunk = chunk + [pad_id] * pad_len
                 x = torch.tensor(chunk[:-1], dtype=torch.long)
                 y = torch.tensor(chunk[1:], dtype=torch.long)
                 self.samples.append((x, y))

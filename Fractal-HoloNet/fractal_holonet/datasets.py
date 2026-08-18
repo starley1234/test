@@ -14,8 +14,9 @@ from torch.utils.data import Dataset
 class ByteDataset(Dataset):
     """Байтовый causal-LM датасет: (x = chunk[:-1], y = chunk[1:]) с паддингом."""
 
-    def __init__(self, token_ids: List[int], block_size: int = 96):
+    def __init__(self, token_ids: List[int], block_size: int = 96, pad_token_id: int = 0):
         self.block_size = block_size
+        self.pad_token_id = pad_token_id
         self.data = torch.tensor(token_ids, dtype=torch.long)
 
     def __len__(self):
@@ -26,7 +27,7 @@ class ByteDataset(Dataset):
         chunk = self.data[start : start + self.block_size + 1]
         if len(chunk) < self.block_size + 1:
             pad_len = self.block_size + 1 - len(chunk)
-            chunk = torch.cat([chunk, torch.zeros(pad_len, dtype=torch.long)])
+            chunk = torch.cat([chunk, torch.full((pad_len,), self.pad_token_id, dtype=torch.long)])
         return chunk[:-1], chunk[1:]
 
 

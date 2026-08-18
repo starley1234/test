@@ -40,30 +40,36 @@
 ## 📂 Структура репозитория
 
 ```text
-├── fractal_holonet/          # 📦 Пакет: ядро, мультимодальность, токенизатор, сервер
+├── fractal_holonet/          # 📦 Пакет: ядро, мультимодальность, токенизаторы, сервер
 │   ├── core.py               #   🧠 Ядро v1: RMSNorm, CRAC, O(1) генератор, config
 │   ├── multimodal.py         #   🌊 Мультимодальное ядро: ContinuousSignalEncoder, AnomalyHead
-│   ├── tokenizer.py          #   🔌 Inference Pipeline и UTF-8 байтовый токенизатор
+│   ├── tokenizer.py          #   🔌 Байтовый + byte-level BPE токенизаторы, inference pipeline
 │   ├── distillation.py       #   🧠 Ядро дистилляции знаний (Teacher API клиент)
 │   ├── self_train.py         #   🤖 Автономное самообучение (eval-гейт, daemon)
-│   ├── serve.py              #   🌐 REST API (генерация, сигналы, /v1/distill, /v1/self-train)
+│   ├── registry.py           #   📒 Реестр обученных моделей (метаданные, метрики, активация)
+│   ├── serve.py              #   🌐 REST API (генерация, сигналы, /v1/distill, /v1/self-train, /v1/models)
 │   └── datasets.py           #   📚 Учебные корпуса и ByteDataset
 ├── scripts/                  # 🛠️ CLI-скрипты
 │   ├── train.py              #   📝 Базовое обучение (Causal LM)
+│   ├── train_from_scratch.py #   🆕 Каноническое обучение с нуля + регистрация в реестре
+│   ├── train_tokenizer.py    #   🔤 Обучение byte-level BPE токенизатора
 │   ├── train_russian.py      #   🇷🇺 Обучение русскому языку
 │   ├── train_multimodal.py   #   🏋️ Обучение на непрерывных сигналах (ЭКГ, Аудио, IoT)
 │   ├── train_benchmark.py    #   🎭 Обучение на эталонном корпусе (TinyShakespeare)
 │   ├── train_v2_lm.py        #   🧬 Обучение ELAST-HOLO v2 (LM)
 │   ├── distill.py            #   🚀 CLI дистилляции (Teacher endpoint + ключ)
+│   ├── register_checkpoint.py#   📒 Импорт существующих чекпоинтов в реестр
 │   ├── export_onnx.py        #   📦 Экспорт в ONNX и валидация через ONNX Runtime
 │   └── verify_all.py         #   🔍 Сквозная проверка всех компонентов (End-to-End)
-├── tests/                    # 🧪 PyTest (v1 + v2 + self-train)
+├── tests/                    # 🧪 PyTest (v1 + v2 + tokenizers + registry + self-train)
 ├── examples/                 # 💡 Демо-скрипты (генерация, русский инференс)
 ├── research/                 # 🔬 Эксперименты, прототипы, ELAST-HOLO v2, бенчмарки
 ├── data/                     # 📊 Корпуса (TinyShakespeare, русские слова)
-├── checkpoints/              # 💾 Чекпоинты (text + multimodal + v2)
+├── registry/                 # 📒 Реестр моделей + обученные токенизаторы
+├── checkpoints/              # 💾 Легаси-чекпоинты (text + multimodal + v2)
 ├── exports/                  # 📦 ONNX-экспорт
 ├── artifacts/                # 🖼️ Графики и результаты прогонов
+├── .github/workflows/ci.yml  # 🔁 CI: тесты + сквозная проверка
 ├── pyproject.toml            # 📌 Пакет, зависимости, конфигурация pytest
 ├── requirements.txt          # 📌 Зафиксированные зависимости
 ├── Dockerfile                # 🐳 Production Dockerfile
@@ -144,6 +150,58 @@ curl -X POST http://localhost:8000/v1/signal/forecast \
 ### 5. Запуск всех тестов
 ```bash
 python3 -m pytest
+```
+
+---
+
+## 🔤 Токенизация: байты и byte-level BPE
+
+| Токенизатор | Словарь | Кириллица | Комментарий |
+|---|---|---|---|
+| `SimpleProductionTokenizer` | 260 (4 спец + 256 байт) | 2 байта/символ | легаси-режим, универсальное байтовое покрытие |
+| `BpeTokenizer` | 8192 (`registry/tokenizers/bpe-8192/`) | **×4.33 сжатие** (52 токена против 225 байт) | обучен на `data/russian_words.txt` (cp1251→UTF-8) + `data/data_benchmark.txt` |
+
+Правила, закреплённые в коде:
+* `vocab_size` конфига **берётся из токенизатора** (`build_config_for_tokenizer`) —
+  рассинхрон «конфиг 300 vs словарь 260» исключён;
+* pad/bos/eos всегда читаются из токенизатора (`tokenizer.pad_token_id` и т.д.),
+  нигде не зашиты константами;
+* в шаблонах дистилляции используется **настоящий eos-токен**, а не строка `<eos>`;
+* пайплайн сам определяет формат `tokenizer.json` (легаси-словарь или HF BPE).
+
+Обучение токенизатора:
+```bash
+python scripts/train_tokenizer.py --vocab-size 8192
+```
+
+---
+
+## 📒 Реестр обученных моделей
+
+Все обученные модели живут в `registry/` с уникальным id, метаданными
+(`registry.json`), метриками и своими весами — **чекпоинты никогда не
+перезаписываются**. Каждый запуск обучения создаёт новую запись.
+
+```bash
+# список моделей
+python -c "import fractal_holonet.registry as r; [print(m['id'], m['status'], m['name']) for m in r.list_models()]"
+
+# импорт существующего чекпоинта
+python scripts/register_checkpoint.py
+
+# обучение С НУЛЯ (регистрация, cosine LR, val-сплит, метрики)
+python scripts/train_from_scratch.py \
+    --tokenizer registry/tokenizers/bpe-8192 \
+    --epochs 5 --batch-size 64 --block-size 96
+
+# обслуживание конкретной модели из реестра
+FH_MODEL_ID=<model-id> uvicorn fractal_holonet.serve:app --host 0.0.0.0 --port 8000
+
+# REST: список, информация, активация
+curl http://localhost:8000/v1/models
+curl http://localhost:8000/v1/models/<model-id>
+curl -X POST http://localhost:8000/v1/models/activate -H "Content-Type: application/json" \
+  -d '{"model_id": "<model-id>"}'
 ```
 
 ---

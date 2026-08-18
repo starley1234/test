@@ -82,6 +82,7 @@ class SyntheticTeacher:
 class HoldoutEvalDataset(Dataset):
     def __init__(self, text: str, tokenizer: SimpleProductionTokenizer, block_size: int = 64):
         self.block_size = block_size
+        self.pad_token_id = tokenizer.pad_token_id
         self.data = torch.tensor(tokenizer.encode(text, add_bos=False), dtype=torch.long)
 
     def __len__(self):
@@ -92,7 +93,7 @@ class HoldoutEvalDataset(Dataset):
         chunk = self.data[start : start + self.block_size + 1]
         if len(chunk) < self.block_size + 1:
             pad_len = self.block_size + 1 - len(chunk)
-            chunk = torch.cat([chunk, torch.zeros(pad_len, dtype=torch.long)])
+            chunk = torch.cat([chunk, torch.full((pad_len,), self.pad_token_id, dtype=torch.long)])
         return chunk[:-1], chunk[1:]
 
 
@@ -136,7 +137,7 @@ class SelfTrainLoop:
     def evaluate_loss(self, block_size: int = 64, batch_size: int = 16) -> float:
         dataset = HoldoutEvalDataset(self.eval_text, self.tokenizer, block_size=block_size)
         loader = DataLoader(dataset, batch_size=batch_size)
-        criterion = nn.CrossEntropyLoss(ignore_index=0)
+        criterion = nn.CrossEntropyLoss(ignore_index=self.tokenizer.pad_token_id)
         was_training = self.student.training
         self.student.eval()
         total, batches = 0.0, 0
@@ -154,7 +155,7 @@ class SelfTrainLoop:
     def train_epochs(self, pairs: List[Dict[str, str]], epochs: int, batch_size: int, block_size: int = 96):
         dataset = DistillationDataset(pairs, self.tokenizer, block_size=block_size)
         loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
-        criterion = nn.CrossEntropyLoss(ignore_index=0)
+        criterion = nn.CrossEntropyLoss(ignore_index=self.tokenizer.pad_token_id)
         optimizer = self._make_optimizer()
         self.student.train()
         for epoch in range(epochs):
