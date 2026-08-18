@@ -1,5 +1,6 @@
 import os
 import time
+import threading
 from typing import List, Dict, Optional, Any
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, status
@@ -10,12 +11,17 @@ from fractal_holonet_prod import ProductionFractalHoloNet, FractalHoloNetConfig
 from multimodal_holonet import MultimodalFractalHoloNet, MultimodalSignalConfig
 from pipeline import SimpleProductionTokenizer, FractalHoloNetInferencePipeline
 from distillation import TeacherAPIClient, FractalHoloNetDistiller
+from self_train import SelfTrainLoop, SelfTrainService, SyntheticTeacher
 
 TEXT_MODEL_DIR = os.getenv("TEXT_MODEL_DIR", "./checkpoints/fractal_holonet_base")
 SIGNAL_MODEL_DIR = os.getenv("SIGNAL_MODEL_DIR", "./checkpoints/fractal_holonet_multimodal")
 
 pipeline: Optional[FractalHoloNetInferencePipeline] = None
 multimodal_model: Optional[MultimodalFractalHoloNet] = None
+self_train_service: Optional[SelfTrainService] = None
+
+# Сериализация мутаций чекпоинта (дистилляция и self-training)
+train_lock = threading.Lock()
 
 def init_services():
     global pipeline, multimodal_model
@@ -118,6 +124,36 @@ class DistillationResponse(BaseModel):
     duration_sec: float
     checkpoint_dir: str
 
+# Self-training (autonomous teacher-driven learning) Schemas
+class SelfTrainRequest(BaseModel):
+    teacher_endpoint: Optional[str] = Field(default="https://api.openai.com/v1")
+    teacher_model: Optional[str] = Field(default="gpt-4o-mini")
+    teacher_api_key: Optional[str] = Field(default="")
+    prompts: Optional[List[str]] = Field(default=None, description="Учебные промпты; если пусто — встроенная учебная программа")
+    epochs: int = Field(default=4, ge=1, le=50)
+    batch_size: int = Field(default=4, ge=1, le=64)
+    curriculum: bool = Field(default=True, description="Студент сам генерирует дополнительные промпты")
+
+class SelfTrainResponse(BaseModel):
+    round: int
+    accepted: bool
+    loss_before: float
+    loss_after: float
+    best_loss: float
+    duration_sec: float
+    samples: int
+    teacher_mode: str
+    checkpoint_dir: str
+
+class SelfTrainServiceRequest(BaseModel):
+    teacher_endpoint: Optional[str] = Field(default="https://api.openai.com/v1")
+    teacher_model: Optional[str] = Field(default="gpt-4o-mini")
+    teacher_api_key: Optional[str] = Field(default="")
+    interval_sec: float = Field(default=300.0, ge=5.0, le=86400.0)
+    epochs: int = Field(default=4, ge=1, le=50)
+    batch_size: int = Field(default=4, ge=1, le=64)
+    curriculum: bool = Field(default=True)
+
 class ModelInfoResponse(BaseModel):
     architecture: str
     modalities: List[str]
@@ -205,38 +241,127 @@ def distill_model(req: DistillationAPIRequest):
     if pipeline is None:
         init_services()
         
-    try:
-        teacher_client = TeacherAPIClient(
-            endpoint=req.teacher_endpoint,
-            api_key=req.teacher_api_key,
-            model_name=req.teacher_model
+    with train_lock:
+        try:
+            teacher_client = TeacherAPIClient(
+                endpoint=req.teacher_endpoint,
+                api_key=req.teacher_api_key,
+                model_name=req.teacher_model
+            )
+            distiller = FractalHoloNetDistiller(
+                student_model=pipeline.model,
+                tokenizer=pipeline.tokenizer,
+                teacher_client=teacher_client,
+                lr=req.learning_rate,
+                device="cpu"
+            )
+            result = distiller.distill_from_teacher_api(
+                prompts=req.prompts,
+                system_prompt=req.system_prompt,
+                epochs=req.epochs,
+                batch_size=req.batch_size,
+                save_dir=TEXT_MODEL_DIR
+            )
+
+            # Перезагружаем пайплайн со свежими весами
+            pipeline = FractalHoloNetInferencePipeline(model_dir=TEXT_MODEL_DIR, device="cpu")
+
+            return {
+                "status": "success",
+                "teacher_model": req.teacher_model,
+                "samples_distilled": len(req.prompts),
+                "epochs": result["epochs"],
+                "final_loss": result["final_loss"],
+                "duration_sec": result["duration_sec"],
+                "checkpoint_dir": result["save_dir"]
+            }
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Distillation failed: {str(e)}")
+
+
+@app.post("/v1/self-train", response_model=SelfTrainResponse)
+def self_train_once(req: SelfTrainRequest):
+    """
+    Один раунд автономного самообучения: развёрнутая LLM (teacher) генерирует
+    обучающие данные, студент дообучается, а eval-гейт принимает раунд только
+    при улучшении holdout-лосса (иначе веса откатываются).
+    """
+    global pipeline
+    if pipeline is None:
+        init_services()
+
+    with train_lock:
+        teacher = (
+            TeacherAPIClient(endpoint=req.teacher_endpoint, api_key=req.teacher_api_key, model_name=req.teacher_model)
+            if req.teacher_api_key
+            else SyntheticTeacher()
         )
-        distiller = FractalHoloNetDistiller(
+        loop = SelfTrainLoop(
             student_model=pipeline.model,
             tokenizer=pipeline.tokenizer,
-            teacher_client=teacher_client,
-            lr=req.learning_rate,
-            device="cpu"
+            teacher_client=teacher,
+            save_dir=TEXT_MODEL_DIR,
         )
-        result = distiller.distill_from_teacher_api(
-            prompts=req.prompts,
-            system_prompt=req.system_prompt,
+        result = loop.run_round(
+            prompts=req.prompts, epochs=req.epochs, batch_size=req.batch_size, curriculum=req.curriculum
+        )
+        if result["accepted"]:
+            pipeline = FractalHoloNetInferencePipeline(model_dir=TEXT_MODEL_DIR, device="cpu")
+        return {
+            "round": result["round"],
+            "accepted": result["accepted"],
+            "loss_before": result["loss_before"],
+            "loss_after": result["loss_after"],
+            "best_loss": result["best_loss"],
+            "duration_sec": result["duration_sec"],
+            "samples": result["samples"],
+            "teacher_mode": result["teacher_mode"],
+            "checkpoint_dir": result["save_dir"],
+        }
+
+
+@app.post("/v1/self-train/start")
+def self_train_start(req: SelfTrainServiceRequest):
+    """Запуск фонового цикла самообучения (daemon): LLM-учитель периодически
+    дообучает модель с eval-гейтом."""
+    global self_train_service, pipeline
+    if pipeline is None:
+        init_services()
+
+    with train_lock:
+        if self_train_service is not None and self_train_service.is_running():
+            return {"status": "already_running", **self_train_service.status()}
+
+        def _reload_pipeline(_result):
+            global pipeline
+            pipeline = FractalHoloNetInferencePipeline(model_dir=TEXT_MODEL_DIR, device="cpu")
+
+        self_train_service = SelfTrainService(
+            checkpoint_dir=TEXT_MODEL_DIR,
+            save_dir=TEXT_MODEL_DIR,
+            teacher_endpoint=req.teacher_endpoint,
+            teacher_api_key=req.teacher_api_key,
+            teacher_model=req.teacher_model,
+            interval_sec=req.interval_sec,
             epochs=req.epochs,
             batch_size=req.batch_size,
-            save_dir=TEXT_MODEL_DIR
+            curriculum=req.curriculum,
+            on_accepted=_reload_pipeline,
         )
-        
-        # Перезагружаем пайплайн со свежими весами
-        pipeline = FractalHoloNetInferencePipeline(model_dir=TEXT_MODEL_DIR, device="cpu")
-        
-        return {
-            "status": "success",
-            "teacher_model": req.teacher_model,
-            "samples_distilled": len(req.prompts),
-            "epochs": result["epochs"],
-            "final_loss": result["final_loss"],
-            "duration_sec": result["duration_sec"],
-            "checkpoint_dir": result["save_dir"]
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Distillation failed: {str(e)}")
+        self_train_service.start()
+    return {"status": "started", **self_train_service.status()}
+
+
+@app.post("/v1/self-train/stop")
+def self_train_stop():
+    global self_train_service
+    if self_train_service is not None:
+        self_train_service.stop()
+    return {"status": "stopped", "rounds": self_train_service.rounds if self_train_service else 0}
+
+
+@app.get("/v1/self-train/status")
+def self_train_status():
+    if self_train_service is None:
+        return {"running": False, "rounds": 0, "teacher_mode": "none", "last_result": None}
+    return self_train_service.status()

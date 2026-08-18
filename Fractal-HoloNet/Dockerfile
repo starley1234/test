@@ -19,8 +19,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy source code and checkpoints
 COPY . .
 
-# Pre-export model and verify
-RUN python -c "from fractal_holonet_prod import ProductionFractalHoloNet, FractalHoloNetConfig; import os; os.makedirs('./checkpoints/fractal_holonet_base', exist_ok=True); ProductionFractalHoloNet(FractalHoloNetConfig(vocab_size=300, d_model=128, n_layers=4, d_ff=384)).save_pretrained('./checkpoints/fractal_holonet_base')"
+# NOTE: чекпоинты уже скопированы из репозитория (COPY . .).
+# Случайная модель здесь НЕ создаётся: serve.py сам инициализирует модель,
+# только если каталог чекпоинта действительно отсутствует.
 
 EXPOSE 8000
 

@@ -50,8 +50,22 @@ def export_to_onnx(model_dir: str, output_onnx_path: str):
     print(f"[ONNX Runtime] Inference test successful! Logits shape: {ort_outputs[0].shape}")
 
 if __name__ == "__main__":
-    checkpoint_dir = "./checkpoints/fractal_holonet_base"
-    config = FractalHoloNetConfig(vocab_size=300, d_model=128, n_layers=4, d_ff=384)
-    m = ProductionFractalHoloNet(config)
-    m.save_pretrained(checkpoint_dir)
-    export_to_onnx(checkpoint_dir, "./exports/fractal_holonet.onnx")
+    import argparse
+
+    ap = argparse.ArgumentParser(description="Export Fractal-HoloNet to ONNX")
+    ap.add_argument("--checkpoint-dir", default="./checkpoints/fractal_holonet_base")
+    ap.add_argument("--output", default="./exports/fractal_holonet.onnx")
+    args = ap.parse_args()
+
+    # НЕ перезаписываем обученный чекпоинт: если модели нет, создаём её
+    # во временном каталоге и только оттуда экспортируем.
+    if not os.path.exists(os.path.join(args.checkpoint_dir, "config.json")):
+        import tempfile
+
+        tmp_dir = tempfile.mkdtemp(prefix="fractal_holonet_export_")
+        config = FractalHoloNetConfig(vocab_size=300, d_model=128, n_layers=4, d_ff=384)
+        ProductionFractalHoloNet(config).save_pretrained(tmp_dir)
+        args.checkpoint_dir = tmp_dir
+        print(f"[ONNX Export] Checkpoint not found: created a fresh random model in {tmp_dir}")
+
+    export_to_onnx(args.checkpoint_dir, args.output)

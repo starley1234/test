@@ -135,3 +135,68 @@ curl -X POST http://localhost:8000/v1/signal/forecast \
 ```bash
 python3 -m pytest test_production.py -v -o cache_dir=/tmp/.pytest_cache
 ```
+
+---
+
+## 🧬 ELAST-HOLO: архитектура v2 (research)
+
+Новое поколение ядра: **Elastic-Time Holographic Associative Machine**
+(дизайн-документ: `research/ARCHITECTURE_V2.md`, код: `research/arch_v2_core.py`).
+
+Ключевые механизмы:
+* **M1 Упругое время** — сеть управляет темпом собственных фазовых часов
+  (`dtheta` на токен): контекстно-зависимые шкалы времени и нативная
+  обработка нерегулярных/событийных потоков через интервалы `dt`.
+* **M3 Комплексная дельта-запись на матричном состоянии** — rank-1 запись
+  с фазово-корректированным стиранием `S ← rot⊙S + β(k vᵀ − k(kᴴS))`
+  (нормированные ключи → стабильный нерасширяющий проектор). Решает
+  ассоциативный recall (MQAR), недоступный диагональной рекурренции v1.
+* **M4 Двойная память fast/slow** с гейтом консолидации по метрике сюрприза.
+* **M5 Итеративное ассоциативное чтение** — K fixed-point шагов уточнения.
+* **M2/M7** — циркулянтное смешивание (FFT) и аналитический (Гильберт)
+  сигнальный фронтенд.
+
+Измерено (CPU-масштаб, равные параметры и бюджет):
+* **MQAR** (L=24, 3 пары): v2 **0.260** vs v1 0.155; экстраполяция L=48:
+  **0.180** vs 0.100 (chance 0.0625) — `research/benchmarks/mqar_benchmark.py`.
+* **Нерегулярное время**: elastic clock даёт **+11.8%** MSE против
+  dt-blind при равных параметрах — `research/benchmarks/irregular_time_bench.py`.
+
+```bash
+python research/benchmarks/mqar_benchmark.py          # v1 vs v2 на MQAR
+python research/benchmarks/irregular_time_bench.py    # выигрыш M1
+python train_v2_lm.py                                 # чекпоинт v2 LM (checkpoints/fractal_holonet_v2)
+python3 -m pytest test_v2.py -v                       # тесты ядра v2
+```
+
+---
+
+## 🤖 Автономное самообучение (развёрнутая LLM обучает модель сама)
+
+`self_train.py` + REST-эндпоинты `/v1/self-train*`: цикл, в котором внешняя
+LLM (любой OpenAI-совместимый эндпоинт) генерирует обучающие данные, а
+студент дообучается **с eval-гейтом** — раунд принимается только при
+улучшении holdout-лосса, иначе веса откатываются (защита чекпоинта).
+
+* Учебная программа (curriculum) + студент сам генерирует пробные промпты.
+* Без API-ключа работает встроенный синтетический учитель (offline).
+
+```bash
+# CLI: синхронно
+python self_train.py --rounds 3
+
+# CLI: фоновый демон каждые 300 секунд
+TEACHER_API_KEY=sk-... python self_train.py --interval 300 --model gpt-4o-mini
+
+# REST: один раунд
+curl -X POST http://localhost:8000/v1/self-train \
+  -H "Content-Type: application/json" \
+  -d '{"teacher_endpoint":"https://api.openai.com/v1","teacher_model":"gpt-4o-mini",
+       "teacher_api_key":"sk-your-key","epochs":4}'
+
+# REST: фоновый цикл + статус
+curl -X POST http://localhost:8000/v1/self-train/start -H "Content-Type: application/json" \
+  -d '{"interval_sec":300,"epochs":4,"teacher_api_key":"sk-your-key"}'
+curl http://localhost:8000/v1/self-train/status
+curl -X POST http://localhost:8000/v1/self-train/stop
+```
