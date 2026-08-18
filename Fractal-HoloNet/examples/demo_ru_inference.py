@@ -1,6 +1,13 @@
-from pipeline import FractalHoloNetInferencePipeline
+import sys
+from pathlib import Path
 
-pipe = FractalHoloNetInferencePipeline("./checkpoints/fractal_holonet_base")
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from fractal_holonet.tokenizer import FractalHoloNetInferencePipeline
+
+pipe = FractalHoloNetInferencePipeline(str(ROOT / "checkpoints" / "fractal_holonet_base"))
 
 prompts = [
     "Искусственный интеллект — это",

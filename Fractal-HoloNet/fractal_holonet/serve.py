@@ -7,11 +7,11 @@ from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel, Field
 import torch
 
-from fractal_holonet_prod import ProductionFractalHoloNet, FractalHoloNetConfig
-from multimodal_holonet import MultimodalFractalHoloNet, MultimodalSignalConfig
-from pipeline import SimpleProductionTokenizer, FractalHoloNetInferencePipeline
-from distillation import TeacherAPIClient, FractalHoloNetDistiller
-from self_train import SelfTrainLoop, SelfTrainService, SyntheticTeacher
+from fractal_holonet.core import ProductionFractalHoloNet, FractalHoloNetConfig
+from fractal_holonet.multimodal import MultimodalFractalHoloNet, MultimodalSignalConfig
+from fractal_holonet.tokenizer import SimpleProductionTokenizer, FractalHoloNetInferencePipeline
+from fractal_holonet.distillation import TeacherAPIClient, FractalHoloNetDistiller
+from fractal_holonet.self_train import SelfTrainLoop, SelfTrainService, SyntheticTeacher
 
 TEXT_MODEL_DIR = os.getenv("TEXT_MODEL_DIR", "./checkpoints/fractal_holonet_base")
 SIGNAL_MODEL_DIR = os.getenv("SIGNAL_MODEL_DIR", "./checkpoints/fractal_holonet_multimodal")

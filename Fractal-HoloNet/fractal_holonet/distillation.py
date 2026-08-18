@@ -10,8 +10,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import Dataset, DataLoader
 
-from fractal_holonet_prod import ProductionFractalHoloNet, FractalHoloNetConfig
-from pipeline import SimpleProductionTokenizer, FractalHoloNetInferencePipeline
+from fractal_holonet.core import ProductionFractalHoloNet, FractalHoloNetConfig
+from fractal_holonet.tokenizer import SimpleProductionTokenizer, FractalHoloNetInferencePipeline
 
 
 class TeacherAPIClient:

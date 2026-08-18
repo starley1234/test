@@ -3,39 +3,26 @@ Train the ELAST-HOLO v2 language model on the Russian corpus (same data
 and budget regime as the v1 train_russian.py run) and save the checkpoint
 to ./checkpoints/fractal_holonet_v2.
 
-    python train_v2_lm.py [--epochs N]
+    python scripts/train_v2_lm.py [--epochs N]
 """
 import os
 import sys
 import time
 import math
 import argparse
+from pathlib import Path
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 
 import torch
 import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
 
 from research.arch_v2_core import ElasticHoloNet, ElasticHoloConfig
-from pipeline import SimpleProductionTokenizer
-from train_russian import get_russian_corpus
-
-
-class ByteDataset(Dataset):
-    def __init__(self, token_ids, block_size=96):
-        self.block_size = block_size
-        self.data = torch.tensor(token_ids, dtype=torch.long)
-
-    def __len__(self):
-        return max(1, (len(self.data) - 1) // self.block_size)
-
-    def __getitem__(self, idx):
-        start = idx * self.block_size
-        chunk = self.data[start : start + self.block_size + 1]
-        if len(chunk) < self.block_size + 1:
-            chunk = torch.cat([chunk, torch.zeros(self.block_size + 1 - len(chunk), dtype=torch.long)])
-        return chunk[:-1], chunk[1:]
+from fractal_holonet.tokenizer import SimpleProductionTokenizer
+from fractal_holonet.datasets import get_russian_corpus, ByteDataset
 
 
 def demo_generate(model, tokenizer, prompts, max_new_tokens=48):
@@ -61,7 +48,7 @@ def greedy_accuracy(model, tokenizer, text):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--epochs", type=int, default=6)
-    ap.add_argument("--save-dir", default="./checkpoints/fractal_holonet_v2")
+    ap.add_argument("--save-dir", default=str(ROOT / "checkpoints" / "fractal_holonet_v2"))
     args = ap.parse_args()
 
     torch.manual_seed(42)

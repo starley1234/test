@@ -33,31 +33,41 @@
 * **Точность детекции аномалий (BCE)**: `0.00019`
 * **Задержка прогнозирования (64 шага)**: `39.5 ms` ($\mathcal{O}(1)$ шаговый стриминг)
 
-![Multimodal Signal Forecast](multimodal_signal_forecast.png)
+![Multimodal Signal Forecast](artifacts/multimodal_signal_forecast.png)
 
 ---
 
 ## 📂 Структура репозитория
 
 ```text
-├── train_russian.py         # 🇷🇺 Обучение русскому языку (Russian Pre-training / Fine-tuning)
-├── multimodal_holonet.py    # 🌊 Мультимодальное ядро: ContinuousSignalEncoder, AnomalyHead, SignalHead
-├── distillation.py          # 🧠 Ядро дистилляции знаний (Teacher API клиент + FractalHoloNetDistiller)
-├── distill.py               # 🚀 CLI-скрипт запуска дистилляции (с ключом и эндпоинтом Teacher)
-├── train_multimodal.py      # 🏋️ Обучение и валидация на непрерывных сигналах (ЭКГ, Аудио, IoT)
-├── train_benchmark.py       # 🎭 Обучение на эталонном корпусе (TinyShakespeare, 1.1M символов)
-├── fractal_holonet_prod.py  # 🧠 Ядро архитектуры: RMSNorm, O(1) генератор, config
-├── pipeline.py              # 🔌 Inference Pipeline и UTF-8 байтовый токенизатор
-├── train.py                 # 📝 Базовый модуль обучения (Causal LM)
-├── serve.py                 # 🌐 REST API сервер (генерация, сигналы, дистилляция /v1/distill)
-├── export_onnx.py           # 📦 Экспорт в ONNX и валидация через ONNX Runtime
-├── test_production.py       # 🧪 Комплексный набор тестов PyTest
-├── verify_all.py            # 🔍 Сквозная проверка всех компонентов системы (End-to-End)
-├── Dockerfile               # 🐳 Production Dockerfile
-├── docker-compose.yml       # 🚀 Оркестрация Uvicorn
-├── requirements.txt         # 📌 Зафиксированные зависимости
-├── checkpoints/             # 💾 Чекпоинты (text + multimodal)
-└── research/                # 🔬 Эксперименты и прототипы (V1..V3)
+├── fractal_holonet/          # 📦 Пакет: ядро, мультимодальность, токенизатор, сервер
+│   ├── core.py               #   🧠 Ядро v1: RMSNorm, CRAC, O(1) генератор, config
+│   ├── multimodal.py         #   🌊 Мультимодальное ядро: ContinuousSignalEncoder, AnomalyHead
+│   ├── tokenizer.py          #   🔌 Inference Pipeline и UTF-8 байтовый токенизатор
+│   ├── distillation.py       #   🧠 Ядро дистилляции знаний (Teacher API клиент)
+│   ├── self_train.py         #   🤖 Автономное самообучение (eval-гейт, daemon)
+│   ├── serve.py              #   🌐 REST API (генерация, сигналы, /v1/distill, /v1/self-train)
+│   └── datasets.py           #   📚 Учебные корпуса и ByteDataset
+├── scripts/                  # 🛠️ CLI-скрипты
+│   ├── train.py              #   📝 Базовое обучение (Causal LM)
+│   ├── train_russian.py      #   🇷🇺 Обучение русскому языку
+│   ├── train_multimodal.py   #   🏋️ Обучение на непрерывных сигналах (ЭКГ, Аудио, IoT)
+│   ├── train_benchmark.py    #   🎭 Обучение на эталонном корпусе (TinyShakespeare)
+│   ├── train_v2_lm.py        #   🧬 Обучение ELAST-HOLO v2 (LM)
+│   ├── distill.py            #   🚀 CLI дистилляции (Teacher endpoint + ключ)
+│   ├── export_onnx.py        #   📦 Экспорт в ONNX и валидация через ONNX Runtime
+│   └── verify_all.py         #   🔍 Сквозная проверка всех компонентов (End-to-End)
+├── tests/                    # 🧪 PyTest (v1 + v2 + self-train)
+├── examples/                 # 💡 Демо-скрипты (генерация, русский инференс)
+├── research/                 # 🔬 Эксперименты, прототипы, ELAST-HOLO v2, бенчмарки
+├── data/                     # 📊 Корпуса (TinyShakespeare, русские слова)
+├── checkpoints/              # 💾 Чекпоинты (text + multimodal + v2)
+├── exports/                  # 📦 ONNX-экспорт
+├── artifacts/                # 🖼️ Графики и результаты прогонов
+├── pyproject.toml            # 📌 Пакет, зависимости, конфигурация pytest
+├── requirements.txt          # 📌 Зафиксированные зависимости
+├── Dockerfile                # 🐳 Production Dockerfile
+└── docker-compose.yml        # 🚀 Оркестрация Uvicorn
 ```
 
 ---
@@ -66,22 +76,22 @@
 
 ### 1. Сквозная проверка всех модулей системы
 ```bash
-python3 verify_all.py
+python3 scripts/verify_all.py
 ```
 
 ### 2. Обучение
 ```bash
 # Обучение на текстах
-python3 train.py
+python3 scripts/train.py
 
 # Обучение на непрерывных сигналах (ЭКГ, аудио, датчики)
-python3 train_multimodal.py
+python3 scripts/train_multimodal.py
 ```
 
 ### 3. Использование в Python для IoT / Биомедицины
 ```python
 import torch
-from multimodal_holonet import MultimodalFractalHoloNet
+from fractal_holonet.multimodal import MultimodalFractalHoloNet
 
 # Загрузка обученной мультимодальной модели
 model = MultimodalFractalHoloNet.from_pretrained("./checkpoints/fractal_holonet_multimodal")
@@ -100,7 +110,7 @@ print("Оценка аномальности по шагам:", anomaly_scores[0
 
 ### 4. Запуск через REST API
 ```bash
-uvicorn serve:app --host 0.0.0.0 --port 8000
+uvicorn fractal_holonet.serve:app --host 0.0.0.0 --port 8000
 ```
 
 #### Эндпоинт дистилляции знаний (Teacher API -> Student):
@@ -133,7 +143,7 @@ curl -X POST http://localhost:8000/v1/signal/forecast \
 
 ### 5. Запуск всех тестов
 ```bash
-python3 -m pytest test_production.py -v -o cache_dir=/tmp/.pytest_cache
+python3 -m pytest
 ```
 
 ---
@@ -165,15 +175,15 @@ python3 -m pytest test_production.py -v -o cache_dir=/tmp/.pytest_cache
 ```bash
 python research/benchmarks/mqar_benchmark.py          # v1 vs v2 на MQAR
 python research/benchmarks/irregular_time_bench.py    # выигрыш M1
-python train_v2_lm.py                                 # чекпоинт v2 LM (checkpoints/fractal_holonet_v2)
-python3 -m pytest test_v2.py -v                       # тесты ядра v2
+python scripts/train_v2_lm.py                         # чекпоинт v2 LM (checkpoints/fractal_holonet_v2)
+python3 -m pytest                                     # все тесты (v1 + v2 + self-train)
 ```
 
 ---
 
 ## 🤖 Автономное самообучение (развёрнутая LLM обучает модель сама)
 
-`self_train.py` + REST-эндпоинты `/v1/self-train*`: цикл, в котором внешняя
+`fractal_holonet/self_train.py` + REST-эндпоинты `/v1/self-train*`: цикл, в котором внешняя
 LLM (любой OpenAI-совместимый эндпоинт) генерирует обучающие данные, а
 студент дообучается **с eval-гейтом** — раунд принимается только при
 улучшении holdout-лосса, иначе веса откатываются (защита чекпоинта).
@@ -183,10 +193,10 @@ LLM (любой OpenAI-совместимый эндпоинт) генериру
 
 ```bash
 # CLI: синхронно
-python self_train.py --rounds 3
+python -m fractal_holonet.self_train --rounds 3
 
 # CLI: фоновый демон каждые 300 секунд
-TEACHER_API_KEY=sk-... python self_train.py --interval 300 --model gpt-4o-mini
+TEACHER_API_KEY=sk-... python -m fractal_holonet.self_train --interval 300 --model gpt-4o-mini
 
 # REST: один раунд
 curl -X POST http://localhost:8000/v1/self-train \

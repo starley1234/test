@@ -1,36 +1,23 @@
 import os
+import sys
 import time
 import math
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 import torch
 import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
 
-from fractal_holonet_prod import ProductionFractalHoloNet, FractalHoloNetConfig
-from pipeline import SimpleProductionTokenizer, FractalHoloNetInferencePipeline
-
-class TextDataset(Dataset):
-    def __init__(self, token_ids, block_size: int = 128):
-        self.block_size = block_size
-        self.data = torch.tensor(token_ids, dtype=torch.long)
-        
-    def __len__(self):
-        return max(1, (len(self.data) - 1) // self.block_size)
-        
-    def __getitem__(self, idx):
-        start_idx = idx * self.block_size
-        end_idx = start_idx + self.block_size + 1
-        chunk = self.data[start_idx:end_idx]
-        
-        if len(chunk) < self.block_size + 1:
-            pad_len = self.block_size + 1 - len(chunk)
-            chunk = torch.cat([chunk, torch.zeros(pad_len, dtype=torch.long)])
-            
-        x = chunk[:-1]
-        y = chunk[1:]
-        return x, y
+from fractal_holonet.core import ProductionFractalHoloNet, FractalHoloNetConfig
+from fractal_holonet.tokenizer import SimpleProductionTokenizer, FractalHoloNetInferencePipeline
+from fractal_holonet.datasets import ByteDataset as TextDataset
 
 def train_on_benchmark_corpus():
-    data_path = "data_benchmark.txt"
+    data_path = str(ROOT / "data" / "data_benchmark.txt")
     if not os.path.exists(data_path):
         raise FileNotFoundError("Dataset not found! Please download data_benchmark.txt first.")
         
@@ -80,7 +67,7 @@ def train_on_benchmark_corpus():
     criterion = nn.CrossEntropyLoss()
     
     epochs = 1
-    save_dir = "./checkpoints/fractal_holonet_base"
+    save_dir = str(ROOT / "checkpoints" / "fractal_holonet_base")
     
     start_time = time.time()
     for epoch in range(epochs):

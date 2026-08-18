@@ -9,7 +9,8 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - MODEL_DIR=/app/checkpoints/fractal_holonet_base
+      - TEXT_MODEL_DIR=/app/checkpoints/fractal_holonet_base
+      - SIGNAL_MODEL_DIR=/app/checkpoints/fractal_holonet_multimodal
       - WORKERS=2
     restart: unless-stopped
     deploy:

@@ -65,8 +65,8 @@ def run_comprehensive_evaluation():
     plt.ylabel("Inference Latency (ms)", fontsize=11)
     plt.grid(True, linestyle="--", alpha=0.6)
     plt.legend(fontsize=10)
-    plt.savefig("scaling_comparison.png", dpi=150)
-    print("\nSaved scaling comparison graph to 'scaling_comparison.png'")
+    plt.savefig(os.path.join("artifacts", "scaling_comparison.png"), dpi=150)
+    print("\nSaved scaling comparison graph to 'artifacts/scaling_comparison.png'")
 
 if __name__ == "__main__":
     run_comprehensive_evaluation()

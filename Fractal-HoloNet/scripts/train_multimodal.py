@@ -1,10 +1,17 @@
 import math
+import sys
 import time
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 import torch
 import torch.nn as nn
 import matplotlib.pyplot as plt
 
-from multimodal_holonet import MultimodalFractalHoloNet, MultimodalSignalConfig
+from fractal_holonet.multimodal import MultimodalFractalHoloNet, MultimodalSignalConfig
 
 # =====================================================================
 # Генерация реалистичных непрерывных мультимодальных сигналов
@@ -146,11 +153,11 @@ def train_and_verify_multimodal():
     plt.legend(fontsize=10)
     plt.grid(True, linestyle="--", alpha=0.5)
     plt.tight_layout()
-    plt.savefig("multimodal_signal_forecast.png", dpi=150)
-    print("💾 График сохранен в 'multimodal_signal_forecast.png'")
+    plt.savefig(str(ROOT / "artifacts" / "multimodal_signal_forecast.png"), dpi=150)
+    print("💾 График сохранен в 'artifacts/multimodal_signal_forecast.png'")
     
     # 5. Сохранение чекпоинта мультимодальной модели
-    save_dir = "./checkpoints/fractal_holonet_multimodal"
+    save_dir = str(ROOT / "checkpoints" / "fractal_holonet_multimodal")
     model.save_pretrained(save_dir)
     print(f"💾 Мультимодальный чекпоинт сохранен в: {save_dir}")
 

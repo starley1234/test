@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from fractal_holonet_prod import (
+from fractal_holonet.core import (
     ProductionRMSNorm,
     ComplexResonanceAssociativeCore,
     FractalHoloNetBlock,

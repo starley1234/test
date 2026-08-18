@@ -3,7 +3,9 @@ FROM python:3.11-slim
 WORKDIR /app
 
 ENV PYTHONUNBUFFERED=1 \
-    MODEL_DIR=/app/checkpoints/fractal_holonet_base \
+    PYTHONPATH=/app \
+    TEXT_MODEL_DIR=/app/checkpoints/fractal_holonet_base \
+    SIGNAL_MODEL_DIR=/app/checkpoints/fractal_holonet_multimodal \
     PORT=8000
 
 # Install system dependencies
@@ -28,4 +30,4 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:8000/health || exit 1
 
-CMD ["uvicorn", "serve:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+CMD ["uvicorn", "fractal_holonet.serve:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]

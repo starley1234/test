@@ -1,8 +1,15 @@
 import os
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 import torch
 import onnx
 import onnxruntime as ort
-from fractal_holonet_prod import ProductionFractalHoloNet, FractalHoloNetConfig
+from fractal_holonet.core import ProductionFractalHoloNet, FractalHoloNetConfig
 
 class FractalHoloNetSequenceWrapper(torch.nn.Module):
     def __init__(self, model: ProductionFractalHoloNet):
@@ -53,8 +60,8 @@ if __name__ == "__main__":
     import argparse
 
     ap = argparse.ArgumentParser(description="Export Fractal-HoloNet to ONNX")
-    ap.add_argument("--checkpoint-dir", default="./checkpoints/fractal_holonet_base")
-    ap.add_argument("--output", default="./exports/fractal_holonet.onnx")
+    ap.add_argument("--checkpoint-dir", default=str(ROOT / "checkpoints" / "fractal_holonet_base"))
+    ap.add_argument("--output", default=str(ROOT / "exports" / "fractal_holonet.onnx"))
     args = ap.parse_args()
 
     # НЕ перезаписываем обученный чекпоинт: если модели нет, создаём её

@@ -3,10 +3,10 @@ import pytest
 import torch
 from fastapi.testclient import TestClient
 
-from fractal_holonet_prod import ProductionFractalHoloNet, FractalHoloNetConfig
-from multimodal_holonet import MultimodalFractalHoloNet, MultimodalSignalConfig
-from pipeline import SimpleProductionTokenizer, FractalHoloNetInferencePipeline
-from serve import app
+from fractal_holonet.core import ProductionFractalHoloNet, FractalHoloNetConfig
+from fractal_holonet.multimodal import MultimodalFractalHoloNet, MultimodalSignalConfig
+from fractal_holonet.tokenizer import SimpleProductionTokenizer, FractalHoloNetInferencePipeline
+from fractal_holonet.serve import app
 
 @pytest.fixture
 def test_checkpoint_dir(tmp_path):
@@ -88,7 +88,7 @@ def test_fastapi_multimodal_endpoints():
     assert "latency_ms" in res
 
 def test_distillation_pipeline(monkeypatch, tmp_path):
-    from distillation import TeacherAPIClient, FractalHoloNetDistiller
+    from fractal_holonet.distillation import TeacherAPIClient, FractalHoloNetDistiller
 
     # Мок генерации ответов Teacher API для независимого теста
     def mock_generate(self, prompt, system_prompt=None, max_tokens=256, temperature=0.7):

@@ -1,14 +1,21 @@
+import sys
 import time
-import torch
-from pipeline import FractalHoloNetInferencePipeline
-from multimodal_holonet import MultimodalFractalHoloNet
+from pathlib import Path
 
-def test_language_model_responses():
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+import torch
+from fractal_holonet.tokenizer import FractalHoloNetInferencePipeline
+from fractal_holonet.multimodal import MultimodalFractalHoloNet
+
+def demo_language_model_responses():
     print("=" * 75)
     print("  🎭 ТЕСТИРОВАНИЕ ОТВЕТОВ ЯЗЫКОВОЙ МОДЕЛИ FRACTAL-HOLONET")
     print("=" * 75)
     
-    pipe = FractalHoloNetInferencePipeline("./checkpoints/fractal_holonet_base")
+    pipe = FractalHoloNetInferencePipeline(str(ROOT / "checkpoints" / "fractal_holonet_base"))
     
     test_cases = [
         {
@@ -68,12 +75,12 @@ def test_language_model_responses():
         print("=" * 75)
 
 
-def test_multimodal_signal_responses():
+def demo_multimodal_signal_responses():
     print("\n" + "=" * 75)
     print("  🌊 ТЕСТИРОВАНИЕ МУЛЬТИМОДАЛЬНЫХ ОТВЕТОВ НА НЕПРЕРЫВНЫЕ СИГНАЛЫ")
     print("=" * 75)
     
-    multi_model = MultimodalFractalHoloNet.from_pretrained("./checkpoints/fractal_holonet_multimodal")
+    multi_model = MultimodalFractalHoloNet.from_pretrained(str(ROOT / "checkpoints" / "fractal_holonet_multimodal"))
     multi_model.eval()
     
     # 1. Нормальный физиологический сигнал (гармонический дрейф)
@@ -106,5 +113,5 @@ def test_multimodal_signal_responses():
     print("=" * 75)
 
 if __name__ == "__main__":
-    test_language_model_responses()
-    test_multimodal_signal_responses()
+    demo_language_model_responses()
+    demo_multimodal_signal_responses()

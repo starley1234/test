@@ -1,17 +1,40 @@
-import os
-import time
-import math
+"""
+Общие датасеты и учебные корпуса Fractal-HoloNet.
+
+Раньше классы TextDataset/RussianTextDataset и get_russian_corpus были
+продублированы в train.py / train_russian.py / train_benchmark.py /
+train_v2_lm.py — теперь один источник истины здесь.
+"""
+from typing import List
+
 import torch
-import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 
-from fractal_holonet_prod import ProductionFractalHoloNet, FractalHoloNetConfig
-from pipeline import SimpleProductionTokenizer, FractalHoloNetInferencePipeline
 
-# =====================================================================
-# Богатый обучающий корпус на русском языке (знания, диалоги, рассуждения, наука, литература)
-# =====================================================================
-def get_russian_corpus():
+class ByteDataset(Dataset):
+    """Байтовый causal-LM датасет: (x = chunk[:-1], y = chunk[1:]) с паддингом."""
+
+    def __init__(self, token_ids: List[int], block_size: int = 96):
+        self.block_size = block_size
+        self.data = torch.tensor(token_ids, dtype=torch.long)
+
+    def __len__(self):
+        return max(1, (len(self.data) - 1) // self.block_size)
+
+    def __getitem__(self, idx):
+        start = idx * self.block_size
+        chunk = self.data[start : start + self.block_size + 1]
+        if len(chunk) < self.block_size + 1:
+            pad_len = self.block_size + 1 - len(chunk)
+            chunk = torch.cat([chunk, torch.zeros(pad_len, dtype=torch.long)])
+        return chunk[:-1], chunk[1:]
+
+
+def get_russian_corpus() -> str:
+    """
+    Богатый обучающий корпус на русском языке (знания, диалоги, рассуждения,
+    наука, литература). Мультиплицируется для глубокой сходимости эмбеддингов.
+    """
     corpus = """
 Искусственный интеллект — это комплекс технологических и программных решений, позволяющий имитировать когнитивные функции человека.
 Архитектура Fractal-HoloNet построена на принципах комплексного фазового резонанса и фрактальных частотных октав.
@@ -55,120 +78,5 @@ def get_russian_corpus():
 
 Великий и могучий русский язык обладает богатой лексикой, гибким синтаксисом и развитой системой словообразования.
 Каждое слово несет в себе глубокий смысл, эмоциональную окраску и культурное наследие поколений.
-""" * 35 # Мультиплицируем для глубокой сходимости эмбеддингов
+""" * 35
     return corpus.strip()
-
-
-class RussianTextDataset(Dataset):
-    def __init__(self, token_ids, block_size: int = 96):
-        self.block_size = block_size
-        self.data = torch.tensor(token_ids, dtype=torch.long)
-        
-    def __len__(self):
-        return max(1, (len(self.data) - 1) // self.block_size)
-        
-    def __getitem__(self, idx):
-        start_idx = idx * self.block_size
-        end_idx = start_idx + self.block_size + 1
-        chunk = self.data[start_idx:end_idx]
-        
-        if len(chunk) < self.block_size + 1:
-            pad_len = self.block_size + 1 - len(chunk)
-            chunk = torch.cat([chunk, torch.zeros(pad_len, dtype=torch.long)])
-            
-        x = chunk[:-1]
-        y = chunk[1:]
-        return x, y
-
-
-def train_russian_language():
-    print("=" * 75)
-    print("  🇷🇺 ОБУЧЕНИЕ МОДЕЛИ FRACTAL-HOLONET РУССКОМУ ЯЗЫКУ (RUSSIAN PRE-TRAINING)")
-    print("=" * 75)
-    
-    corpus = get_russian_corpus()
-    encoded_bytes = corpus.encode("utf-8")
-    print(f"📊 Размер обучающего корпуса: {len(corpus):,} символов ({len(encoded_bytes):,} UTF-8 байт)")
-    
-    tokenizer = SimpleProductionTokenizer()
-    tokens = tokenizer.encode(corpus, add_bos=False)
-    
-    block_size = 96
-    batch_size = 64
-    dataset = RussianTextDataset(tokens, block_size=block_size)
-    loader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
-    
-    print(f"📦 Всего обучающих батчей: {len(loader)} (блок {block_size} токенов, batch_size={batch_size})")
-    
-    config = FractalHoloNetConfig(
-        vocab_size=300,
-        d_model=128,
-        n_layers=4,
-        d_ff=384,
-        dropout=0.02
-    )
-    model = ProductionFractalHoloNet(config)
-    print(f"⚙️ Параметров архитектуры: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}")
-    print("-" * 75)
-    
-    optimizer = torch.optim.AdamW(model.parameters(), lr=2e-3, weight_decay=0.01)
-    criterion = nn.CrossEntropyLoss()
-    
-    epochs = 5
-    save_dir = "./checkpoints/fractal_holonet_base"
-    
-    start_time = time.time()
-    model.train()
-    
-    for epoch in range(epochs):
-        total_loss = 0.0
-        batches = 0
-        
-        for x, y in loader:
-            optimizer.zero_grad()
-            logits, _ = model(x, states=None, use_step=False)
-            loss = criterion(logits.view(-1, logits.size(-1)), y.view(-1))
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-            optimizer.step()
-            
-            total_loss += loss.item()
-            batches += 1
-            
-        avg_loss = total_loss / max(1, batches)
-        ppl = math.exp(min(avg_loss, 20))
-        print(f"  Эпоха [{epoch+1:02d}/{epochs:02d}] | Train Loss: {avg_loss:.4f} | Perplexity (PPL): {ppl:.2f}")
-            
-    total_time = time.time() - start_time
-    print(f"✅ Обучение русскому языку завершено за {total_time:.2f} сек!")
-    
-    # Сохраняем модель
-    os.makedirs(save_dir, exist_ok=True)
-    model.save_pretrained(save_dir)
-    tokenizer.save(os.path.join(save_dir, "tokenizer.json"))
-    print(f"💾 Обученная русскоязычная модель сохранена в: {save_dir}")
-    
-    # Комплексное тестирование русскоязычных ответов
-    print("\n" + "=" * 75)
-    print("  🧪 ТЕСТИРОВАНИЕ РУССКОЯЗЫЧНЫХ ОТВЕТОВ FRACTAL-HOLONET")
-    print("=" * 75)
-    
-    pipe = FractalHoloNetInferencePipeline(save_dir)
-    
-    prompts = [
-        "Искусственный интеллект — это",
-        "Архитектура Fractal-HoloNet построена на",
-        "Вопрос: В чем главное преимущество фрактальной архитектуры?\nОтвет:",
-        "Пользователь: Какая сложность вычислений при генерации текста?\nАссистент:",
-        "Мороз и солнце; день чудесный!"
-    ]
-    
-    for p in prompts:
-        res = pipe.generate(p, max_new_tokens=100, temperature=0.5, top_k=25, top_p=0.85)
-        print(f"\n[ПРОМПТ]:\n{p}")
-        print(f"[ОТВЕТ МОДЕЛИ]:\n{res['generated_text']}")
-        print(f"[ПОЛНЫЙ ТЕКСТ]:\n{res['full_text']}")
-        print("-" * 50)
-
-if __name__ == "__main__":
-    train_russian_language()

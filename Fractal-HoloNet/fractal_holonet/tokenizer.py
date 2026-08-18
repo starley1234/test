@@ -57,7 +57,7 @@ class FractalHoloNetInferencePipeline:
     High-level production inference pipeline for text completion and embedding extraction.
     """
     def __init__(self, model_dir: str, device: str = "cpu"):
-        from fractal_holonet_prod import ProductionFractalHoloNet
+        from fractal_holonet.core import ProductionFractalHoloNet
         self.device = torch.device(device)
         self.model = ProductionFractalHoloNet.from_pretrained(model_dir, map_location=device)
         self.model.to(self.device)

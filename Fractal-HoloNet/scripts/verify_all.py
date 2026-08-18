@@ -1,13 +1,20 @@
 import os
+import sys
 import time
 import json
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 import torch
 from fastapi.testclient import TestClient
 
-from fractal_holonet_prod import ProductionFractalHoloNet, FractalHoloNetConfig
-from multimodal_holonet import MultimodalFractalHoloNet, MultimodalSignalConfig
-from pipeline import SimpleProductionTokenizer, FractalHoloNetInferencePipeline
-from serve import app
+from fractal_holonet.core import ProductionFractalHoloNet, FractalHoloNetConfig
+from fractal_holonet.multimodal import MultimodalFractalHoloNet, MultimodalSignalConfig
+from fractal_holonet.tokenizer import SimpleProductionTokenizer, FractalHoloNetInferencePipeline
+from fractal_holonet.serve import app
 
 def run_system_verification():
     print("=" * 70)
@@ -16,8 +23,8 @@ def run_system_verification():
     
     # 1. Verification of Checkpoints
     print("\n[1/5] Проверка сохраненных чекпоинтов...")
-    text_ckpt = "./checkpoints/fractal_holonet_base"
-    multi_ckpt = "./checkpoints/fractal_holonet_multimodal"
+    text_ckpt = str(ROOT / "checkpoints" / "fractal_holonet_base")
+    multi_ckpt = str(ROOT / "checkpoints" / "fractal_holonet_multimodal")
     
     assert os.path.exists(os.path.join(text_ckpt, "config.json")), "Missing text config!"
     assert os.path.exists(os.path.join(text_ckpt, "pytorch_model.pt")), "Missing text weights!"
@@ -81,7 +88,7 @@ def run_system_verification():
     
     # 5. ONNX Export & ONNX Runtime Validation
     print("\n[5/5] Проверка ONNX модели и ONNX Runtime...")
-    onnx_path = "./exports/fractal_holonet.onnx"
+    onnx_path = str(ROOT / "exports" / "fractal_holonet.onnx")
     assert os.path.exists(onnx_path), "Missing ONNX export file!"
     import onnxruntime as ort
     session = ort.InferenceSession(onnx_path)

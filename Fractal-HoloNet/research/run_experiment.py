@@ -66,8 +66,8 @@ def run_experiment():
     plt.grid(True, linestyle="--", alpha=0.5)
     plt.legend(fontsize=11)
     plt.tight_layout()
-    plt.savefig("scaling_comparison.png", dpi=150)
-    print("\n[SUCCESS] Generated visual scaling benchmark report: 'scaling_comparison.png'")
+    plt.savefig(os.path.join("artifacts", "scaling_comparison.png"), dpi=150)
+    print("\n[SUCCESS] Generated visual scaling benchmark report: 'artifacts/scaling_comparison.png'")
 
 if __name__ == "__main__":
     run_experiment()

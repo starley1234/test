@@ -1,34 +1,20 @@
 import os
+import sys
 import time
 import math
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 import torch
 import torch.nn as nn
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader
 
-from fractal_holonet_prod import ProductionFractalHoloNet, FractalHoloNetConfig
-from pipeline import SimpleProductionTokenizer, FractalHoloNetInferencePipeline
-
-class TextDataset(Dataset):
-    def __init__(self, text: str, tokenizer: SimpleProductionTokenizer, block_size: int = 64):
-        self.block_size = block_size
-        encoded = tokenizer.encode(text, add_bos=False)
-        self.data = torch.tensor(encoded, dtype=torch.long)
-        
-    def __len__(self):
-        return max(1, (len(self.data) - 1) // self.block_size)
-        
-    def __getitem__(self, idx):
-        start_idx = idx * self.block_size
-        end_idx = start_idx + self.block_size + 1
-        chunk = self.data[start_idx:end_idx]
-        
-        if len(chunk) < self.block_size + 1:
-            pad_len = self.block_size + 1 - len(chunk)
-            chunk = torch.cat([chunk, torch.zeros(pad_len, dtype=torch.long)])
-            
-        x = chunk[:-1]
-        y = chunk[1:]
-        return x, y
+from fractal_holonet.core import ProductionFractalHoloNet, FractalHoloNetConfig
+from fractal_holonet.tokenizer import SimpleProductionTokenizer, FractalHoloNetInferencePipeline
+from fractal_holonet.datasets import ByteDataset
 
 
 class FractalHoloNetTrainer:
@@ -59,9 +45,12 @@ class FractalHoloNetTrainer:
         epochs: int = 20,
         batch_size: int = 8,
         block_size: int = 64,
-        save_dir: str = "./checkpoints/fractal_holonet_base"
+        save_dir: str = "",
     ):
-        dataset = TextDataset(text_data, self.tokenizer, block_size=block_size)
+        if not save_dir:
+            save_dir = str(ROOT / "checkpoints" / "fractal_holonet_base")
+        encoded = self.tokenizer.encode(text_data, add_bos=False)
+        dataset = ByteDataset(encoded, block_size=block_size)
         dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=True)
         
         print(f"\n🚀 Запуск обучения Fractal-HoloNet на корпусе текстов...")
@@ -118,7 +107,7 @@ Autonomous agents operate continuously without memory overflow.
     trainer = FractalHoloNetTrainer(model, tokenizer, lr=2e-3, device="cpu")
     trainer.train(corpus, epochs=20, batch_size=8, block_size=64)
     
-    pipe = FractalHoloNetInferencePipeline("./checkpoints/fractal_holonet_base")
+    pipe = FractalHoloNetInferencePipeline(str(ROOT / "checkpoints" / "fractal_holonet_base"))
     res = pipe.generate("Fractal-HoloNet is a novel", max_new_tokens=45, temperature=0.5)
     print("--- 🌟 Тест генерации обученной модели ---")
     print(f"Промпт: '{res['prompt']}'")

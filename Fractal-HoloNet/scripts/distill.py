@@ -1,9 +1,16 @@
 import os
+import sys
 import time
 import argparse
-from distillation import TeacherAPIClient, FractalHoloNetDistiller
-from fractal_holonet_prod import ProductionFractalHoloNet, FractalHoloNetConfig
-from pipeline import SimpleProductionTokenizer, FractalHoloNetInferencePipeline
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from fractal_holonet.distillation import TeacherAPIClient, FractalHoloNetDistiller
+from fractal_holonet.core import ProductionFractalHoloNet, FractalHoloNetConfig
+from fractal_holonet.tokenizer import SimpleProductionTokenizer, FractalHoloNetInferencePipeline
 
 def run_distillation_cli():
     print("=" * 75)
@@ -25,7 +32,7 @@ def run_distillation_cli():
     ]
     
     tokenizer = SimpleProductionTokenizer()
-    ckpt_dir = "./checkpoints/fractal_holonet_base"
+    ckpt_dir = str(ROOT / "checkpoints" / "fractal_holonet_base")
     
     if os.path.exists(os.path.join(ckpt_dir, "pytorch_model.pt")):
         student = ProductionFractalHoloNet.from_pretrained(ckpt_dir)

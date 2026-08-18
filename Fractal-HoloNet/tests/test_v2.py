@@ -1,6 +1,6 @@
 """
 Tests for ELAST-HOLO v2 core and the autonomous self-training loop.
-Run: python -m pytest test_v2.py -v
+Run: python -m pytest tests/test_v2.py -v
 """
 import os
 import time
@@ -12,7 +12,7 @@ from research.arch_v2_core import (
     ElasticHoloConfig,
     ElasticSignalNet,
 )
-from pipeline import SimpleProductionTokenizer
+from fractal_holonet.tokenizer import SimpleProductionTokenizer
 
 
 def make_model(**kw):
@@ -110,9 +110,9 @@ def test_mqar_quick_learning():
 
 
 def test_self_train_loop_gate(tmp_path):
-    from self_train import SelfTrainLoop, SyntheticTeacher
+    from fractal_holonet.self_train import SelfTrainLoop, SyntheticTeacher
 
-    from fractal_holonet_prod import ProductionFractalHoloNet, FractalHoloNetConfig
+    from fractal_holonet.core import ProductionFractalHoloNet, FractalHoloNetConfig
 
     torch.manual_seed(3)
     tokenizer = SimpleProductionTokenizer()
@@ -135,8 +135,8 @@ def test_self_train_loop_gate(tmp_path):
 
 
 def test_self_train_service_daemon(tmp_path):
-    from self_train import SelfTrainService
-    from fractal_holonet_prod import ProductionFractalHoloNet, FractalHoloNetConfig
+    from fractal_holonet.self_train import SelfTrainService
+    from fractal_holonet.core import ProductionFractalHoloNet, FractalHoloNetConfig
 
     # pre-create a small checkpoint so daemon rounds stay fast
     student = ProductionFractalHoloNet(
