@@ -33,31 +33,46 @@
 * **Точность детекции аномалий (BCE)**: `0.00019`
 * **Задержка прогнозирования (64 шага)**: `39.5 ms` ($\mathcal{O}(1)$ шаговый стриминг)
 
-![Multimodal Signal Forecast](multimodal_signal_forecast.png)
+![Multimodal Signal Forecast](assets/multimodal_signal_forecast.png)
 
 ---
 
-## 📂 Структура репозитория
+## 📂 Лаконичная структура репозитория
 
 ```text
-├── train_russian.py         # 🇷🇺 Обучение русскому языку (Russian Pre-training / Fine-tuning)
-├── multimodal_holonet.py    # 🌊 Мультимодальное ядро: ContinuousSignalEncoder, AnomalyHead, SignalHead
-├── distillation.py          # 🧠 Ядро дистилляции знаний (Teacher API клиент + FractalHoloNetDistiller)
-├── distill.py               # 🚀 CLI-скрипт запуска дистилляции (с ключом и эндпоинтом Teacher)
-├── train_multimodal.py      # 🏋️ Обучение и валидация на непрерывных сигналах (ЭКГ, Аудио, IoT)
-├── train_benchmark.py       # 🎭 Обучение на эталонном корпусе (TinyShakespeare, 1.1M символов)
-├── fractal_holonet_prod.py  # 🧠 Ядро архитектуры: RMSNorm, O(1) генератор, config
-├── pipeline.py              # 🔌 Inference Pipeline и UTF-8 байтовый токенизатор
-├── train.py                 # 📝 Базовый модуль обучения (Causal LM)
-├── serve.py                 # 🌐 REST API сервер (генерация, сигналы, дистилляция /v1/distill)
-├── export_onnx.py           # 📦 Экспорт в ONNX и валидация через ONNX Runtime
-├── test_production.py       # 🧪 Комплексный набор тестов PyTest
-├── verify_all.py            # 🔍 Сквозная проверка всех компонентов системы (End-to-End)
-├── Dockerfile               # 🐳 Production Dockerfile
-├── docker-compose.yml       # 🚀 Оркестрация Uvicorn
-├── requirements.txt         # 📌 Зафиксированные зависимости
-├── checkpoints/             # 💾 Чекпоинты (text + multimodal)
-└── research/                # 🔬 Эксперименты и прототипы (V1..V3)
+├── src/holonet/              # 📦 Основной Python-пакет архитектуры
+│   ├── __init__.py           # Экспорт ключевых классов и интерфейсов
+│   ├── models/               # Архитектурные блоки
+│   │   ├── fractal_holonet.py# Базовое ядро (RMSNorm, CRAC O(1), SwiGLU)
+│   │   └── multimodal.py     # Моделирование непрерывных сигналов и аномалий
+│   ├── pipeline.py           # Высокоуровневый пайплайн и UTF-8 токенизатор
+│   └── distillation.py       # Движок дистилляции знаний (Teacher API клиент)
+│
+├── scripts/                  # 🛠️ Скрипты обучения, дистилляции и экспорта
+│   ├── train.py              # Базовое обучение LM
+│   ├── train_russian.py      # Обучение русскому языку
+│   ├── train_multimodal.py   # Обучение на непрерывных сигналах (ЭКГ, Аудио)
+│   ├── train_benchmark.py    # Бенчмарк на TinyShakespeare
+│   ├── distill.py            # CLI дистилляция через внешние LLM
+│   ├── export_onnx.py        # Экспорт в ONNX и валидация ONNX Runtime
+│   └── verify_all.py         # Сквозная верификация всей системы
+│
+├── tests/                    # 🧪 Набор автоматических тестов
+│   ├── test_production.py    # PyTest: архитектура, инференс, API, дистилляция
+│   ├── test_model_responses.py# Тесты генерации текста и отклика на сигналы
+│   └── test_ru_inference.py  # Тесты русскоязычных ответов
+│
+├── data/                     # 📊 Датасеты (TinyShakespeare и др.)
+├── assets/                   # 📈 Графика и визуализации
+├── checkpoints/              # 💾 Сохраненные чекпоинты моделей
+├── exports/                  # 📦 Экспортированные ONNX модели
+├── research/                 # 🔬 Прототипы и ранние исследования
+│
+├── serve.py                  # 🌐 Высокопроизводительный FastAPI REST сервис
+├── setup.py                  # ⚙️ Конфигурация pip-пакета
+├── Dockerfile                # 🐳 Production Dockerfile
+├── docker-compose.yml        # 🚀 Развертывание сервиса
+└── requirements.txt          # 📌 Зависимости
 ```
 
 ---
@@ -133,5 +148,5 @@ curl -X POST http://localhost:8000/v1/signal/forecast \
 
 ### 5. Запуск всех тестов
 ```bash
-python3 -m pytest test_production.py -v -o cache_dir=/tmp/.pytest_cache
+python3 -m pytest -v -o cache_dir=/tmp/.pytest_cache
 ```

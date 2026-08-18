@@ -1,13 +1,15 @@
+# Byte-compiled / optimized / ambient files
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+*$py.class
 .pytest_cache/
+
+# Artifacts & Local caches
+*.log
 .coverage
 htmlcov/
-*.log
 .DS_Store
-.env
-.venv/
-env/
-venv/
+
+# Temporary Large Data
+*.tmp
+*.bin

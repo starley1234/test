@@ -1,15 +1,38 @@
 import os
+import sys
+from pathlib import Path
+
+# Setup Python Path
+ROOT_DIR = Path(__file__).resolve().parent
+SRC_DIR = ROOT_DIR / "src"
+
+if str(SRC_DIR) not in sys.path:
+    sys.path.insert(0, str(SRC_DIR))
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
+# Backward compatibility alias imports for any legacy script
+from holonet.models.fractal_holonet import (
+    ProductionRMSNorm,
+    ComplexResonanceAssociativeCore,
+    FractalHoloNetBlock,
+    FractalHoloNetConfig,
+    ProductionFractalHoloNet,
+)
+from holonet.models.multimodal import (
+    ContinuousSignalEncoder,
+    MultimodalSignalConfig,
+    MultimodalFractalHoloNet,
+)
+from holonet.pipeline import SimpleProductionTokenizer, FractalHoloNetInferencePipeline
+from holonet.distillation import TeacherAPIClient, FractalHoloNetDistiller
+
 import time
 from typing import List, Dict, Optional, Any
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, status
 from pydantic import BaseModel, Field
 import torch
-
-from fractal_holonet_prod import ProductionFractalHoloNet, FractalHoloNetConfig
-from multimodal_holonet import MultimodalFractalHoloNet, MultimodalSignalConfig
-from pipeline import SimpleProductionTokenizer, FractalHoloNetInferencePipeline
-from distillation import TeacherAPIClient, FractalHoloNetDistiller
 
 TEXT_MODEL_DIR = os.getenv("TEXT_MODEL_DIR", "./checkpoints/fractal_holonet_base")
 SIGNAL_MODEL_DIR = os.getenv("SIGNAL_MODEL_DIR", "./checkpoints/fractal_holonet_multimodal")
@@ -55,7 +78,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Fractal-HoloNet Multimodal & Distillation AI Service",
     description="Universal continuous signal & text intelligence with Knowledge Distillation from Teacher LLMs",
-    version="2.1.0",
+    version="2.2.0",
     lifespan=lifespan
 )
 
@@ -197,10 +220,6 @@ def forecast_signal(req: SignalForecastRequest):
 
 @app.post("/v1/distill", response_model=DistillationResponse)
 def distill_model(req: DistillationAPIRequest):
-    """
-    Эндпоинт дистилляции знаний: обращается к Teacher модели через endpoint, model и api_key,
-    генерирует эталонные ответы/рассуждения и обучает локальную модель Fractal-HoloNet.
-    """
     global pipeline
     if pipeline is None:
         init_services()
@@ -226,7 +245,6 @@ def distill_model(req: DistillationAPIRequest):
             save_dir=TEXT_MODEL_DIR
         )
         
-        # Перезагружаем пайплайн со свежими весами
         pipeline = FractalHoloNetInferencePipeline(model_dir=TEXT_MODEL_DIR, device="cpu")
         
         return {
