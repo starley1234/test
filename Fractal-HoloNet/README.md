@@ -42,12 +42,14 @@
 ```text
 ├── multimodal_holonet.py    # 🌊 Мультимодальное ядро: ContinuousSignalEncoder, AnomalyHead, SignalHead
 ├── train_multimodal.py      # 🏋️ Обучение и валидация на непрерывных сигналах (ЭКГ, Аудио, IoT)
+├── train_benchmark.py       # 🎭 Обучение на эталонном корпусе (TinyShakespeare, 1.1M символов)
 ├── fractal_holonet_prod.py  # 🧠 Ядро архитектуры: RMSNorm, O(1) генератор, config
 ├── pipeline.py              # 🔌 Inference Pipeline и UTF-8 байтовый токенизатор
-├── train.py                 # 📝 Обучение языковой модели на текстах
+├── train.py                 # 📝 Базовый модуль обучения (Causal LM)
 ├── serve.py                 # 🌐 REST API сервер (текст + непрерывные сигналы + аномалии)
 ├── export_onnx.py           # 📦 Экспорт в ONNX и валидация через ONNX Runtime
 ├── test_production.py       # 🧪 Комплексный набор тестов PyTest
+├── verify_all.py            # 🔍 Сквозная проверка всех компонентов системы (End-to-End)
 ├── Dockerfile               # 🐳 Production Dockerfile
 ├── docker-compose.yml       # 🚀 Оркестрация Uvicorn
 ├── requirements.txt         # 📌 Зафиксированные зависимости
@@ -57,14 +59,23 @@
 
 ---
 
-## ⚡ Использование непрерывных сигналов на практике
+## ⚡ Использование на практике
 
-### 1. Обучение на непрерывных сигналах
+### 1. Сквозная проверка всех модулей системы
 ```bash
+python3 verify_all.py
+```
+
+### 2. Обучение
+```bash
+# Обучение на текстах
+python3 train.py
+
+# Обучение на непрерывных сигналах (ЭКГ, аудио, датчики)
 python3 train_multimodal.py
 ```
 
-### 2. Использование в Python для IoT / Биомедицины
+### 3. Использование в Python для IoT / Биомедицины
 ```python
 import torch
 from multimodal_holonet import MultimodalFractalHoloNet
@@ -84,8 +95,7 @@ _, anomaly_scores, _ = model.forward_continuous(raw_stream)
 print("Оценка аномальности по шагам:", anomaly_scores[0, :, 0])
 ```
 
-### 3. Запуск через REST API
-
+### 4. Запуск через REST API
 ```bash
 uvicorn serve:app --host 0.0.0.0 --port 8000
 ```
@@ -100,18 +110,8 @@ curl -X POST http://localhost:8000/v1/signal/forecast \
     "forecast_steps": 16
   }'
 ```
-**Ответ:**
-```json
-{
-  "forecast": [[0.15], [0.28], "..."],
-  "forecast_steps": 16,
-  "channels": 1,
-  "anomaly_scores": [0.001, 0.002, 0.001, "..."],
-  "latency_ms": 12.4
-}
-```
 
-### 4. Запуск всех тестов
+### 5. Запуск всех тестов
 ```bash
 python3 -m pytest test_production.py -v -o cache_dir=/tmp/.pytest_cache
 ```
