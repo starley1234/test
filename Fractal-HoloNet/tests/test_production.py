@@ -18,9 +18,9 @@ from holonet import (
     SimpleProductionTokenizer,
     FractalHoloNetInferencePipeline,
     TeacherAPIClient,
-    FractalHoloNetDistiller
+    FractalHoloNetDistiller,
+    app
 )
-from serve import app
 
 @pytest.fixture
 def test_checkpoint_dir(tmp_path):

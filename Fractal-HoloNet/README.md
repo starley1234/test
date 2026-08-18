@@ -81,22 +81,28 @@
 
 ### 1. Сквозная проверка всех модулей системы
 ```bash
-python3 verify_all.py
+python3 scripts/verify_all.py
 ```
 
 ### 2. Обучение
 ```bash
 # Обучение на текстах
-python3 train.py
+python3 scripts/train.py
 
 # Обучение на непрерывных сигналах (ЭКГ, аудио, датчики)
-python3 train_multimodal.py
+python3 scripts/train_multimodal.py
+
+# Обучение русскому языку
+python3 scripts/train_russian.py
+
+# Бенчмарк на TinyShakespeare
+python3 scripts/train_benchmark.py
 ```
 
 ### 3. Использование в Python для IoT / Биомедицины
 ```python
 import torch
-from multimodal_holonet import MultimodalFractalHoloNet
+from holonet import MultimodalFractalHoloNet
 
 # Загрузка обученной мультимодальной модели
 model = MultimodalFractalHoloNet.from_pretrained("./checkpoints/fractal_holonet_multimodal")
@@ -115,7 +121,11 @@ print("Оценка аномальности по шагам:", anomaly_scores[0
 
 ### 4. Запуск через REST API
 ```bash
-uvicorn serve:app --host 0.0.0.0 --port 8000
+# Прямой запуск через корневой файл
+python3 serve.py
+
+# Либо через uvicorn
+uvicorn holonet:app --host 0.0.0.0 --port 8000
 ```
 
 #### Эндпоинт дистилляции знаний (Teacher API -> Student):

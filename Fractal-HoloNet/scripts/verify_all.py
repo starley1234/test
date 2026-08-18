@@ -5,6 +5,7 @@ from pathlib import Path
 # Setup Python Path
 ROOT_DIR = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT_DIR / "src"))
+sys.path.insert(0, str(ROOT_DIR))
 
 import time
 import json
@@ -17,9 +18,9 @@ from holonet import (
     MultimodalFractalHoloNet,
     MultimodalSignalConfig,
     SimpleProductionTokenizer,
-    FractalHoloNetInferencePipeline
+    FractalHoloNetInferencePipeline,
+    app
 )
-from serve import app
 
 def run_system_verification():
     print("=" * 70)

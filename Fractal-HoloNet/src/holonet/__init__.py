@@ -1,15 +1,39 @@
-from holonet.models.fractal_holonet import ProductionFractalHoloNet, FractalHoloNetConfig
-from holonet.models.multimodal import MultimodalFractalHoloNet, MultimodalSignalConfig
-from holonet.pipeline import SimpleProductionTokenizer, FractalHoloNetInferencePipeline
-from holonet.distillation import TeacherAPIClient, FractalHoloNetDistiller
+from holonet.models.fractal_holonet import (
+    ProductionRMSNorm,
+    ComplexResonanceAssociativeCore,
+    FractalHoloNetBlock,
+    FractalHoloNetConfig,
+    ProductionFractalHoloNet,
+)
+from holonet.models.multimodal import (
+    ContinuousSignalEncoder,
+    MultimodalSignalConfig,
+    MultimodalFractalHoloNet,
+)
+from holonet.pipeline import (
+    SimpleProductionTokenizer,
+    FractalHoloNetInferencePipeline,
+)
+from holonet.distillation import (
+    TeacherAPIClient,
+    DistillationDataset,
+    FractalHoloNetDistiller,
+)
+from holonet.serve import app
 
 __all__ = [
-    "ProductionFractalHoloNet",
+    "ProductionRMSNorm",
+    "ComplexResonanceAssociativeCore",
+    "FractalHoloNetBlock",
     "FractalHoloNetConfig",
-    "MultimodalFractalHoloNet",
+    "ProductionFractalHoloNet",
+    "ContinuousSignalEncoder",
     "MultimodalSignalConfig",
+    "MultimodalFractalHoloNet",
     "SimpleProductionTokenizer",
     "FractalHoloNetInferencePipeline",
     "TeacherAPIClient",
+    "DistillationDataset",
     "FractalHoloNetDistiller",
+    "app",
 ]
