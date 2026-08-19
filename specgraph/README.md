@@ -68,4 +68,5 @@ UI: `http://localhost:8000/` · API: `http://localhost:8000/docs`
 - `POST /pipelines/summarize`
 - `POST /pipelines/review-correctness` — матрица по методике А.3 → `.docx`
 - `POST /pipelines/unit-tests` — Excel unit-тестов + лист Simulation
+- `POST /pipelines/schematic-coverage` — схема (PNG/PDF) → ФС → покрытие требованиями
 - `POST /pipelines/{имя}` — любое имя из `catalog.json`
