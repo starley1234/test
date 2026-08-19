@@ -58,6 +58,7 @@ class RelationType(str, enum.Enum):
     ILLUSTRATED_BY = "illustrated_by"
     DERIVED_FROM = "derived_from"
     VERIFIED_BY = "verified_by"
+    IMPLEMENTS = "implements"  # модуль ПО → требование (TPO/OPPO)
 
 
 class EntityType(str, enum.Enum):

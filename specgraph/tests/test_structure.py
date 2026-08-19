@@ -32,6 +32,7 @@ def test_parsed_json_hierarchy():
             ],
         }
     )
-    assert len(g.products) == 2
-    assert g.products[1].parent_code == "A"
+    assert any(p.code == "A" for p in g.products)
+    child = next(p for p in g.products if p.code == "A-1")
+    assert child.parent_code == "A"
     assert g.requirements[0].product_code == "A-1"

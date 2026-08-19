@@ -1,10 +1,11 @@
-"""Эвристики: плоский текст/JSON Word-скрипта → изделия и требования.
+"""Плоский Word / JSON скрипта → изделия, требования, трассировка.
 
-Типичные маркеры в ТЗ/ТУ/спецификациях:
-- заголовки «1.2 Изделие …», «Состав изделия», коды вида АБВГ.123456.001
-- требования: «должен», «обеспечивать», «не менее», нумерация 4.1.2
-- таблицы атрибутов: параметр | значение | единица
-- подписи рисунков: «Рисунок 3 — …»
+Заточено под ТНУ/ТВУ авиационного ПО (КТ-178C / DO-178C):
+- идентификаторы MK-114.OPPO.DATA.001/B, MK-114.TPO.FNCT.021;
+- карточки-таблицы Идентификатор / Содержание / Обоснование / Производное;
+- таблицы модулей ПО и распределения требований;
+- глоссарий «термин – определение»;
+и под обычные ТЗ (нумерация, «должен», децимальные коды).
 """
 
 from __future__ import annotations
@@ -13,23 +14,54 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from specgraph.ingest.extract import ExtractedDoc
+from specgraph.ingest.extract import Block, ExtractedDoc
 
+# MK-114.OPPO.DATA.001/B  |  MK-114.TPO.FNCT.021  |  MK-114.OPPO.DATA.021/C.01
+REQ_ID = re.compile(
+    r"\b([A-Z]{1,12}-\d{1,4}(?:\.[A-Z]{2,8}){1,6}\.\d{3}(?:/[A-Z](?:\.\d{2})?)?)\b"
+)
+REQ_ID_LOOSE = re.compile(
+    r"\b((?:REQ|ТР|Треб|HLR|LLR)[-–]?\d+(?:\.\d+)*)\b",
+    re.I,
+)
 DEC_CODE = re.compile(r"\b([A-ZА-Я]{2,6}\.\d{5,8}\.\d{2,4}(?:[-.]\d{2})?)\b")
-REQ_CODE = re.compile(r"\b((?:REQ|ТР|Треб)[-–]?\d+(?:\.\d+)*)\b", re.I)
-HEADING = re.compile(r"^(\d+(?:\.\d+){0,5})\s+(.+)$")
-MUST = re.compile(r"(должен|должна|должно|должны|обеспечивать|предусмотреть|не менее|не более)", re.I)
-FIGURE = re.compile(r"^(рисунок|рис\.|figure)\s*[\d.]+", re.I)
+DOC_CODE = re.compile(r"\b(АСДБ\.[0-9.\-хx]{4,}\s*\d{0,2}\s*\d{0,2})\b")
+MUST = re.compile(r"(должен|должна|должно|должны|обеспечивать|предусмотреть|не менее|не более|shall)", re.I)
+FIGURE = re.compile(r"^(рисунок|рис\.|figure|схема)\s*[\d.IVX]*", re.I)
+NUM_HEADING = re.compile(r"^(\d+(?:\.\d+){0,5})\s+(.+)$")
 ATTR_LINE = re.compile(r"^([^:]{2,80}):\s*(.+)$")
+GLOSS = re.compile(r"^(.{1,80}?)\s+[–—\-]\s+(.{3,})$")
+SOURCE = re.compile(r"^\[(\d+)\]\s+(.+)$")
+TABLE_CAPTION = re.compile(r"^таблица\s+[\d.]+\s*[–—-]?\s*(.*)$", re.I)
+
+KIND_BY_TOKEN = {
+    "FNCT": "functional",
+    "INTF": "interface",
+    "TIME": "performance",
+    "DATA": "design",
+    "HWRQ": "design",
+    "SAFE": "safety",
+    "REL": "reliability",
+}
 
 KIND_HINTS = {
-    "interface": ("интерфейс", "протокол", "разъём", "разъем", "шина"),
+    "interface": ("интерфейс", "протокол", "разъём", "разъем", "шина", "arinc", "can", "rs-485"),
     "safety": ("безопасност", "защита", "запрещ"),
-    "performance": ("производительн", "быстродейств", "точность", "погрешн"),
+    "performance": ("производительн", "быстродейств", "точность", "погрешн", "кГц", "частот"),
     "reliability": ("надёжн", "надежн", "наработк", "отказ"),
     "environment": ("климат", "температур", "влажност", "вибрац"),
-    "regulatory": ("гост", "ост", "нжд", "норматив"),
+    "regulatory": ("гост", "кт-178", "do-178", "норматив"),
     "functional": ("функц", "должен", "режим"),
+}
+
+CARD_LABELS = {
+    "идентификатор": "id",
+    "содержание": "text",
+    "обоснование": "rationale",
+    "пояснение": "note",
+    "допущение": "assumption",
+    "верификация": "verification",
+    "приоритет": "priority",
 }
 
 
@@ -42,6 +74,7 @@ class DraftProduct:
     section_path: str | None = None
     description: str = ""
     attributes: dict[str, str] = field(default_factory=dict)
+    extra: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -54,16 +87,35 @@ class DraftRequirement:
     kind: str = "unknown"
     section_path: str | None = None
     attributes: dict[str, str] = field(default_factory=dict)
+    extra: dict[str, Any] = field(default_factory=dict)
+    stub: bool = False
+
+
+@dataclass
+class DraftRelation:
+    rel_type: str
+    src_kind: str  # product | requirement
+    src_code: str
+    dst_kind: str
+    dst_code: str
 
 
 @dataclass
 class DraftGraph:
     products: list[DraftProduct] = field(default_factory=list)
     requirements: list[DraftRequirement] = field(default_factory=list)
+    relations: list[DraftRelation] = field(default_factory=list)
     figure_captions: list[str] = field(default_factory=list)
+    glossary: dict[str, str] = field(default_factory=dict)
+    sources: dict[str, str] = field(default_factory=dict)
+    title: str | None = None
 
 
-def infer_kind(text: str) -> str:
+def infer_kind(text: str, code: str = "") -> str:
+    up = code.upper()
+    for token, kind in KIND_BY_TOKEN.items():
+        if f".{token}." in up:
+            return kind
     low = text.lower()
     for kind, hints in KIND_HINTS.items():
         if any(h in low for h in hints):
@@ -71,170 +123,456 @@ def infer_kind(text: str) -> str:
     return "unknown"
 
 
-def from_extracted(doc: ExtractedDoc) -> DraftGraph:
-    graph = DraftGraph()
-    current_section = ""
-    current_product: DraftProduct | None = None
-    heading_stack: list[tuple[int, str]] = []
-    req_seq = 0
+def _base_req_code(code: str) -> str:
+    return code.split("/", 1)[0]
 
-    for para in doc.paragraphs:
-        if FIGURE.match(para):
-            graph.figure_captions.append(para)
+
+def _revision(code: str) -> str | None:
+    if "/" in code:
+        return code.split("/", 1)[1]
+    return None
+
+
+class _Builder:
+    def __init__(self) -> None:
+        self.g = DraftGraph()
+        self._products: dict[str, DraftProduct] = {}
+        self._reqs: dict[str, DraftRequirement] = {}
+        self.section: list[str] = []
+        self.current_product: str | None = None
+        self.pending_req: str | None = None
+        self.last_table_caption: str | None = None
+
+    def section_path(self) -> str:
+        return " / ".join(self.section[-4:])
+
+    def ensure_product(self, code: str, name: str, *, parent: str | None = None, level: int = 0, **kw) -> DraftProduct:
+        if code in self._products:
+            p = self._products[code]
+            if name and len(name) > len(p.name):
+                p.name = name
+            p.attributes.update(kw.pop("attributes", {}) or {})
+            if kw.get("description"):
+                p.description = (p.description + "\n" + kw["description"]).strip()
+            return p
+        p = DraftProduct(code=code, name=name, parent_code=parent, level=level, section_path=self.section_path(), **kw)
+        self._products[code] = p
+        self.g.products.append(p)
+        return p
+
+    def add_req(self, dr: DraftRequirement) -> DraftRequirement:
+        key = dr.code
+        if key in self._reqs:
+            old = self._reqs[key]
+            if dr.text and (not old.text or (dr.stub is False and old.stub)):
+                old.text = dr.text
+                old.stub = False
+            old.attributes.update(dr.attributes)
+            if dr.product_code and not old.product_code:
+                old.product_code = dr.product_code
+            return old
+        if not dr.kind or dr.kind == "unknown":
+            dr.kind = infer_kind(dr.text, dr.code)
+        if not dr.section_path:
+            dr.section_path = self.section_path()
+        rev = _revision(dr.code)
+        if rev:
+            dr.attributes.setdefault("ревизия", rev)
+            dr.attributes.setdefault("базовый_код", _base_req_code(dr.code))
+        self._reqs[key] = dr
+        self.g.requirements.append(dr)
+        return dr
+
+    def rel(self, rel_type: str, src_kind: str, src: str, dst_kind: str, dst: str) -> None:
+        self.g.relations.append(DraftRelation(rel_type, src_kind, src, dst_kind, dst))
+
+
+def _push_heading(b: _Builder, text: str, level: int) -> None:
+    # обрезаем стек
+    while len(b.section) >= level:
+        b.section.pop()
+    while len(b.section) < level - 1:
+        b.section.append("")
+    b.section.append(text)
+
+    ids = REQ_ID.findall(text)
+    if ids and len(text) < 80:
+        b.pending_req = ids[0]
+        return
+
+    decs = DEC_CODE.findall(text)
+    looks_hw = bool(decs) or any(k in text.lower() for k in ("изделие", "блок", "система", "устройство", "состав"))
+    if looks_hw and "требован" not in text.lower() and "архитектур" not in text.lower():
+        code = decs[0] if decs else f"P-{level}-{re.sub(r'[^0-9A-Za-zА-Яа-я]+', '', text)[:16]}"
+        parent = b.current_product
+        b.ensure_product(code, text.strip(), parent=parent, level=level)
+        b.current_product = code
+
+    low = text.lower()
+    if "микроконтроллер №1" in low or "1921вк028" in low or "mcu1" in low.replace(" ", ""):
+        b.ensure_product("MCU1", "Микроконтроллер №1 (1921ВК028)", parent="SW-MK-114", level=2)
+        b.current_product = "MCU1"
+    elif "микроконтроллер №2" in low or "stm32f407" in low or "mcu2" in low.replace(" ", ""):
+        b.ensure_product("MCU2", "Микроконтроллер №2 (STM32F407)", parent="SW-MK-114", level=2)
+        b.current_product = "MCU2"
+    elif "модул" in low:
+        # «Требования к модулю расчета частоты»
+        name = re.sub(r"^требования к\s+", "", text, flags=re.I).strip()
+        code = _module_code(name)
+        parent = b.current_product if b.current_product in {"MCU1", "MCU2"} else "SW-MK-114"
+        b.ensure_product(code, name, parent=parent, level=3)
+        b.current_product = code
+
+
+def _module_code(name: str) -> str:
+    file_hint = re.search(r"([a-zA-Z][a-zA-Z0-9_]+)\.(c|h)\b", name)
+    if file_hint:
+        return f"MOD-{file_hint.group(1)}"
+    slug = re.sub(r"[^a-zA-Zа-яА-Я0-9]+", "-", name.lower()).strip("-")
+    slug = slug.replace("требования-к-", "").replace("модулю-", "mod-").replace("модуль-", "mod-")
+    return ("MOD-" + slug)[:80]
+
+
+def _seed_system(b: _Builder, title: str | None) -> None:
+    b.ensure_product("IL-114-300", "Самолёт Ил-114-300", level=0)
+    b.ensure_product("MK-114", "Модуль коммутационный МК-114", parent="IL-114-300", level=1)
+    b.ensure_product("SW-MK-114", "ПО «Управление МК-114»", parent="MK-114", level=1)
+    b.ensure_product("MCU1", "Микроконтроллер №1 (1921ВК028)", parent="SW-MK-114", level=2)
+    b.ensure_product("MCU2", "Микроконтроллер №2 (STM32F407)", parent="SW-MK-114", level=2)
+    b.g.title = title
+    b.current_product = "SW-MK-114"
+
+
+def _looks_req_card(rows: list[list[str]]) -> bool:
+    if not rows:
+        return False
+    labels = [r[0].strip().lower() for r in rows if r and r[0]]
+    return "идентификатор" in labels or "содержание" in labels
+
+
+def _parse_req_card(rows: list[list[str]]) -> dict[str, str]:
+    card: dict[str, str] = {}
+    extras_row: list[str] = []
+    for row in rows:
+        if not row:
             continue
+        raw_label = (row[0] or "").strip()
+        label = CARD_LABELS.get(raw_label.lower())
+        values = [c.strip() for c in row[1:] if c and c.strip()]
+        if label == "id" and values:
+            card["id"] = values[0]
+        elif label == "assumption":
+            extras_row = [c.strip() for c in row[1:] if c and c.strip()]
+            if extras_row:
+                card["assumption"] = " ".join(extras_row)
+        elif label:
+            card[label] = "\n".join(values)
+        elif raw_label:
+            card[raw_label] = "\n".join(values)
+    # Производное | Да | Функция
+    joined = " ".join(extras_row)
+    if re.search(r"производн", joined, re.I):
+        card["производное"] = "да" if re.search(r"\bда\b", joined, re.I) else joined
+    if re.search(r"функц", joined, re.I):
+        card["класс"] = "функция"
+    return card
 
-        hm = HEADING.match(para)
-        if hm:
-            num, title = hm.group(1), hm.group(2).strip()
-            current_section = f"{num} {title}"
-            depth = num.count(".")
-            heading_stack = [(d, t) for d, t in heading_stack if d < depth]
-            heading_stack.append((depth, current_section))
 
-            codes = DEC_CODE.findall(para)
-            looks_product = bool(codes) or any(
-                k in title.lower() for k in ("изделие", "блок", "модуль", "система", "устройство", "состав")
-            )
-            if looks_product:
-                code = codes[0] if codes else f"P-{num}"
-                parent = current_product.code if current_product and depth > (current_product.level) else None
-                if heading_stack and depth > 0:
-                    # родитель — предыдущий заголовок меньшего уровня, если он изделие
-                    for p in reversed(graph.products):
-                        if p.level < depth:
-                            parent = p.code
-                            break
-                current_product = DraftProduct(
-                    code=code,
-                    name=title,
-                    parent_code=parent,
-                    level=depth,
-                    section_path=current_section,
-                    description=para,
-                )
-                graph.products.append(current_product)
+def _parse_module_table(b: _Builder, rows: list[list[str]], parent: str | None) -> None:
+    if len(rows) < 2:
+        return
+    header = [c.lower() for c in rows[0]]
+    name_i = 0
+    desc_i = 1 if len(header) > 1 else 0
+    files_i = next((i for i, h in enumerate(header) if "файл" in h), 2 if len(header) > 2 else None)
+    parent = parent or b.current_product or "SW-MK-114"
+    for row in rows[1:]:
+        if not row or not row[0].strip():
             continue
+        name = row[name_i].replace("\n", " ").strip()
+        desc = row[desc_i].strip() if desc_i < len(row) else ""
+        files = row[files_i].replace("\n", ", ").strip() if files_i is not None and files_i < len(row) else ""
+        code = _module_code(files.split(",")[0] if files else name)
+        attrs = {}
+        if files:
+            attrs["файлы"] = files
+        if "функционально" in desc.lower():
+            attrs["класс"] = "functional"
+        if "аппаратно" in desc.lower():
+            attrs["класс"] = "hardware"
+        b.ensure_product(code, name, parent=parent, level=3, description=desc, attributes=attrs)
 
-        am = ATTR_LINE.match(para)
-        if am and current_product and len(am.group(1)) < 60:
-            current_product.attributes[am.group(1).strip()] = am.group(2).strip()
+
+def _parse_alloc_table(b: _Builder, rows: list[list[str]], parent: str | None) -> None:
+    if len(rows) < 2:
+        return
+    parent = parent or b.current_product or "SW-MK-114"
+    for row in rows[1:]:
+        if len(row) < 2 or not row[0].strip():
             continue
-
-        is_req = bool(REQ_CODE.search(para) or MUST.search(para))
-        if is_req:
-            req_seq += 1
-            codes = REQ_CODE.findall(para)
-            code = codes[0] if codes else f"REQ-{req_seq:04d}"
-            parent_req = None
-            if "." in code:
-                parent_req = code.rsplit(".", 1)[0]
-            graph.requirements.append(
+        name = row[0].replace("\n", " ").strip()
+        codes = REQ_ID.findall(row[1] or "")
+        mod = _module_code(name)
+        b.ensure_product(mod, name, parent=parent, level=3)
+        for code in codes:
+            b.add_req(
                 DraftRequirement(
                     code=code,
-                    text=para,
-                    product_code=current_product.code if current_product else None,
-                    parent_code=parent_req,
-                    kind=infer_kind(para),
-                    section_path=current_section,
+                    text=f"Требование верхнего уровня {code} (трассировка, текст в исходном ТВУ).",
+                    product_code=mod,
+                    kind=infer_kind("", code),
+                    stub=True,
+                    extra={"layer": "TPO" if ".TPO." in code else "OPPO"},
                 )
             )
-        elif current_product:
-            current_product.description = (current_product.description + "\n" + para).strip()
-
-    # таблицы: первая строка — заголовки, дальше атрибуты или требования
-    for table in doc.tables:
-        _ingest_table(table, graph, current_product)
-
-    if not graph.products:
-        graph.products.append(DraftProduct(code="P-ROOT", name=doc.title or "Документ", description=doc.text[:2000]))
-
-    return graph
+            b.rel("implements", "product", mod, "requirement", code)
 
 
-def _ingest_table(table: list[list[str]], graph: DraftGraph, current: DraftProduct | None) -> None:
-    if not table:
+def _parse_generic_attr_table(b: _Builder, rows: list[list[str]]) -> None:
+    if len(rows) < 2:
         return
-    header = [c.lower() for c in table[0]]
-    joined = " ".join(header)
-    if any(k in joined for k in ("параметр", "наименован", "атрибут", "характерист")):
-        name_i = next((i for i, h in enumerate(header) if any(k in h for k in ("наим", "парам", "атриб"))), 0)
-        val_i = next((i for i, h in enumerate(header) if any(k in h for k in ("значен", "велич"))), 1 if len(header) > 1 else 0)
-        unit_i = next((i for i, h in enumerate(header) if "единиц" in h), None)
-        target = current or (graph.products[-1] if graph.products else None)
-        if not target:
+    header = [c.lower() for c in rows[0]]
+    if not any(k in " ".join(header) for k in ("параметр", "наименован", "атрибут", "характерист")):
+        return
+    target = b._products.get(b.current_product) if b.current_product else None
+    if not target:
+        return
+    name_i = next((i for i, h in enumerate(header) if any(k in h for k in ("наим", "парам", "атриб"))), 0)
+    val_i = next((i for i, h in enumerate(header) if any(k in h for k in ("значен", "велич"))), 1 if len(header) > 1 else 0)
+    for row in rows[1:]:
+        if len(row) <= max(name_i, val_i):
+            continue
+        if row[name_i]:
+            target.attributes[row[name_i]] = row[val_i]
+
+
+def _handle_table(b: _Builder, rows: list[list[str]]) -> None:
+    if _looks_req_card(rows):
+        card = _parse_req_card(rows)
+        code = card.get("id") or b.pending_req
+        if not code:
+            found = REQ_ID.findall(" ".join(c for r in rows for c in r))
+            code = found[0] if found else None
+        if not code:
             return
-        for row in table[1:]:
-            if len(row) <= max(name_i, val_i):
-                continue
-            key, val = row[name_i], row[val_i]
-            if unit_i is not None and unit_i < len(row) and row[unit_i]:
-                val = f"{val} {row[unit_i]}"
-            if key:
-                target.attributes[key] = val
+        text = card.get("text") or ""
+        if not text.strip() and b.pending_req:
+            text = ""
+        attrs = {k: v for k, v in card.items() if k not in {"id", "text"} and v}
+        product = b.current_product
+        # MCU hint in text
+        blob = " ".join([text, card.get("rationale", "")])
+        if re.search(r"MCU2|МК2|микроконтроллера №2", blob, re.I):
+            product = "MCU2"
+        elif re.search(r"MCU1|МК1|микроконтроллера №1", blob, re.I):
+            product = "MCU1"
+        b.add_req(
+            DraftRequirement(
+                code=code,
+                text=text or f"Требование {code}",
+                product_code=product,
+                kind=infer_kind(text, code),
+                attributes=attrs,
+                extra={"layer": "OPPO" if ".OPPO." in code else ("TPO" if ".TPO." in code else "llr")},
+            )
+        )
+        if product:
+            b.rel("applies_to", "requirement", code, "product", product)
+        b.pending_req = None
         return
-    if any(k in joined for k in ("требован", "должен")):
-        for i, row in enumerate(table[1:], start=1):
+
+    header = " ".join(rows[0]).lower() if rows else ""
+    cap = (b.last_table_caption or "").lower()
+    if "модул" in header or "модул" in cap:
+        if "требован" in header or "которые реализуются" in header:
+            _parse_alloc_table(b, rows, b.current_product)
+        else:
+            _parse_module_table(b, rows, b.current_product)
+        return
+    if "кт-178" in header or "настоящий документ" in header:
+        return
+    _parse_generic_attr_table(b, rows)
+    # таблица как набор требований-строк
+    if "требован" in header:
+        for i, row in enumerate(rows[1:], start=1):
             text = " — ".join(c for c in row if c)
             if not text:
                 continue
-            graph.requirements.append(
-                DraftRequirement(
-                    code=f"REQ-T{len(graph.requirements)+1:04d}",
-                    text=text,
-                    product_code=current.code if current else None,
-                    kind=infer_kind(text),
-                )
-            )
+            ids = REQ_ID.findall(text)
+            code = ids[0] if ids else f"REQ-T{len(b.g.requirements)+1:04d}"
+            b.add_req(DraftRequirement(code=code, text=text, product_code=b.current_product, kind=infer_kind(text, code)))
 
 
-def from_parsed_json(payload: dict[str, Any]) -> DraftGraph:
-    """Адаптер под типичный JSON скрипта обработки Word.
+def _handle_paragraph(b: _Builder, text: str) -> None:
+    hm = NUM_HEADING.match(text)
+    if hm and len(text) < 200:
+        _push_heading(b, text, hm.group(1).count(".") + 1)
+        return
+    if FIGURE.match(text):
+        b.g.figure_captions.append(text)
+        return
+    mcap = TABLE_CAPTION.match(text)
+    if mcap:
+        b.last_table_caption = text
+        return
+    sm = SOURCE.match(text)
+    if sm:
+        b.g.sources[sm.group(1)] = sm.group(2).strip()
+        return
 
-    Ожидаемые (гибкие) ключи:
-    - products / items / изделия
-    - requirements / требования
-    - sections / paragraphs
-    """
-    graph = DraftGraph()
+    ids = REQ_ID.findall(text)
+    if ids and len(text) < 64:
+        b.pending_req = ids[0]
+        return
 
-    products = payload.get("products") or payload.get("items") or payload.get("изделия") or []
-    reqs = payload.get("requirements") or payload.get("требования") or []
-    sections = payload.get("sections") or payload.get("paragraphs") or payload.get("blocks") or []
+    gm = GLOSS.match(text)
+    if gm and "термин" in b.section_path().lower():
+        term, defn = gm.group(1).strip(), gm.group(2).strip()
+        b.g.glossary[term] = defn
+        _maybe_product_from_gloss(b, term, defn)
+        return
 
-    if not products and not reqs and sections:
-        # скрипт отдал линейную структуру — прогоняем как текст
-        paras: list[str] = []
-        for s in sections:
-            if isinstance(s, str):
-                paras.append(s)
-            elif isinstance(s, dict):
-                paras.append(s.get("text") or s.get("content") or s.get("title") or "")
-        from specgraph.ingest.extract import ExtractedDoc
+    # обычный глоссарий без секции
+    if gm and len(gm.group(1)) <= 40 and "должен" not in text.lower():
+        left = gm.group(1).strip()
+        if re.match(r"^[A-ZА-Я0-9][A-ZА-Я0-9/ \-]{0,30}$", left):
+            b.g.glossary[left] = gm.group(2).strip()
+            _maybe_product_from_gloss(b, left, gm.group(2).strip())
+            return
 
-        return from_extracted(ExtractedDoc(title=payload.get("title"), paragraphs=[p for p in paras if p], tables=[]))
+    am = ATTR_LINE.match(text)
+    if am and b.current_product and len(am.group(1)) < 60 and not MUST.search(text):
+        target = b._products.get(b.current_product)
+        if target:
+            target.attributes[am.group(1).strip()] = am.group(2).strip()
+            return
 
-    for p in products:
-        if not isinstance(p, dict):
-            continue
-        graph.products.append(
-            DraftProduct(
-                code=str(p.get("code") or p.get("id") or p.get("шифр") or f"P-{len(graph.products)+1}"),
-                name=str(p.get("name") or p.get("title") or p.get("наименование") or "Изделие"),
-                parent_code=(str(p["parent"]) if p.get("parent") else None) or p.get("parent_code"),
-                level=int(p.get("level") or 0),
-                section_path=p.get("section") or p.get("path"),
-                description=str(p.get("description") or p.get("text") or ""),
-                attributes={str(k): str(v) for k, v in (p.get("attributes") or p.get("attrs") or {}).items()},
+    # длинные абзацы с упоминанием ID — не карточка требования
+    mention_only = bool(ids) and len(text) > 120 and not MUST.search(text)
+    if mention_only:
+        return
+
+    if MUST.search(text) or (ids and len(text) < 400) or REQ_ID_LOOSE.search(text):
+        codes = ids or REQ_ID_LOOSE.findall(text)
+        code = codes[0] if codes else f"REQ-{len(b.g.requirements)+1:04d}"
+        parent = None
+        if "." in code and not REQ_ID.match(code or ""):
+            parent = code.rsplit(".", 1)[0]
+        b.add_req(
+            DraftRequirement(
+                code=code,
+                text=text,
+                product_code=b.current_product,
+                parent_code=parent,
+                kind=infer_kind(text, code),
             )
         )
 
+
+def _maybe_product_from_gloss(b: _Builder, term: str, defn: str) -> None:
+    key = term.split()[0]
+    interesting = (
+        "МК-114",
+        "MK-114",
+        "МУ-114",
+        "БКПОС",
+        "БУКПОС",
+        "MCU1",
+        "MCU2",
+        "САУП",
+        "КПА",
+        "СЭС",
+    )
+    if any(k.lower() in term.lower() for k in interesting):
+        code = re.sub(r"\s+", "-", term.split("–")[0].split("/")[0].strip())[:40]
+        parent = "IL-114-300"
+        if "по" in term.lower() or "ПО" in term:
+            parent = "MK-114"
+            code = "SW-MK-114" if "МК-114" in term or "MK-114" in term else code
+        b.ensure_product(code, f"{term} — {defn[:80]}", parent=parent, level=1, description=defn)
+
+
+def from_extracted(doc: ExtractedDoc) -> DraftGraph:
+    b = _Builder()
+    blob = (doc.title or "") + "\n" + (doc.text or "")[:4000]
+    if re.search(r"MK-114|МК-114|КТ-178|OPPO\.|TPO\.", blob, re.I):
+        _seed_system(b, doc.title)
+    else:
+        b.g.title = doc.title
+
+    blocks = doc.blocks
+    if not blocks:
+        blocks = [Block(kind="paragraph", text=p) for p in doc.paragraphs]
+        for t in doc.tables:
+            blocks.append(Block(kind="table", rows=t))
+
+    for block in blocks:
+        if block.kind == "heading" and block.text:
+            _push_heading(b, block.text, block.heading_level or 1)
+            continue
+        if block.kind == "table":
+            _handle_table(b, block.rows)
+            continue
+        if block.kind == "image":
+            if block.text:
+                b.g.figure_captions.append(block.text)
+            continue
+        if block.text:
+            # JSON-скрипт помечает короткие строки как heading без стиля —
+            # повторяющиеся названия разделов
+            if block.heading_level and len(block.text) < 90:
+                _push_heading(b, block.text, block.heading_level)
+            else:
+                _handle_paragraph(b, block.text)
+
+    if not b.g.products:
+        b.ensure_product("P-ROOT", doc.title or "Документ", description=(doc.text or "")[:2000])
+    return b.g
+
+
+def extracted_from_generic_json(payload: dict[str, Any]) -> ExtractedDoc:
+    paras: list[str] = []
+    for key in ("sections", "paragraphs", "blocks"):
+        for s in payload.get(key) or []:
+            if isinstance(s, str):
+                paras.append(s)
+            elif isinstance(s, dict):
+                paras.append(str(s.get("text") or s.get("content") or s.get("title") or ""))
+    paras = [p for p in paras if p]
+    return ExtractedDoc(title=payload.get("title"), paragraphs=paras, tables=[], blocks=[Block(kind="paragraph", text=p) for p in paras])
+
+
+def from_parsed_json(payload: dict[str, Any]) -> DraftGraph:
+    if payload.get("document_structure"):
+        from specgraph.ingest.extract import extracted_from_script_json
+
+        return from_extracted(extracted_from_script_json(payload))
+
+    products = payload.get("products") or payload.get("items") or payload.get("изделия") or []
+    reqs = payload.get("requirements") or payload.get("требования") or []
+    if not products and not reqs:
+        return from_extracted(extracted_from_generic_json(payload))
+
+    b = _Builder()
+    b.g.title = payload.get("title")
+    for p in products:
+        if not isinstance(p, dict):
+            continue
+        b.ensure_product(
+            str(p.get("code") or p.get("id") or p.get("шифр") or f"P-{len(b.g.products)+1}"),
+            str(p.get("name") or p.get("title") or p.get("наименование") or "Изделие"),
+            parent=(str(p["parent"]) if p.get("parent") else None) or p.get("parent_code"),
+            level=int(p.get("level") or 0),
+            description=str(p.get("description") or p.get("text") or ""),
+            attributes={str(k): str(v) for k, v in (p.get("attributes") or p.get("attrs") or {}).items()},
+        )
     for r in reqs:
         if not isinstance(r, dict):
             continue
         text = str(r.get("text") or r.get("wording") or r.get("формулировка") or "")
-        graph.requirements.append(
+        b.add_req(
             DraftRequirement(
-                code=str(r.get("code") or r.get("id") or f"REQ-{len(graph.requirements)+1:04d}"),
+                code=str(r.get("code") or r.get("id") or f"REQ-{len(b.g.requirements)+1:04d}"),
                 text=text,
                 title=r.get("title") or r.get("name"),
                 product_code=r.get("product") or r.get("product_code") or r.get("изделие"),
@@ -244,13 +582,9 @@ def from_parsed_json(payload: dict[str, Any]) -> DraftGraph:
                 attributes={str(k): str(v) for k, v in (r.get("attributes") or {}).items()},
             )
         )
-
     for fig in payload.get("figures") or payload.get("illustrations") or []:
         if isinstance(fig, str):
-            graph.figure_captions.append(fig)
+            b.g.figure_captions.append(fig)
         elif isinstance(fig, dict):
-            graph.figure_captions.append(str(fig.get("caption") or fig.get("title") or ""))
-
-    if not graph.products:
-        graph.products.append(DraftProduct(code="P-ROOT", name=str(payload.get("title") or "Документ")))
-    return graph
+            b.g.figure_captions.append(str(fig.get("caption") or fig.get("title") or ""))
+    return b.g

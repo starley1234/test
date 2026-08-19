@@ -91,6 +91,12 @@ def ingest_parsed_json(db: Session, payload: dict[str, Any], filename: str = "in
     )
     db.add(doc)
     db.flush()
+    doc.parse_meta = {
+        **(doc.parse_meta or {}),
+        "glossary": draft.glossary,
+        "sources": draft.sources,
+        "counts": {"products": len(draft.products), "requirements": len(draft.requirements)},
+    }
     persist_graph(db, doc, draft)
     db.commit()
     if index:
@@ -117,6 +123,7 @@ def persist_graph(db: Session, doc: Document, draft: DraftGraph) -> None:
             level=dp.level,
             section_path=dp.section_path,
             description=dp.description,
+            extra=dp.extra or {},
         )
         db.add(prod)
         db.flush()
@@ -176,6 +183,36 @@ def persist_graph(db: Session, doc: Document, draft: DraftGraph) -> None:
                     dst_id=reqs[dr.parent_code].id,
                 )
             )
+
+    type_map = {
+        "applies_to": RelationType.APPLIES_TO,
+        "composed_of": RelationType.COMPOSED_OF,
+        "refines": RelationType.REFINES,
+        "depends_on": RelationType.DEPENDS_ON,
+        "conflicts_with": RelationType.CONFLICTS_WITH,
+        "illustrated_by": RelationType.ILLUSTRATED_BY,
+        "derived_from": RelationType.DERIVED_FROM,
+        "verified_by": RelationType.VERIFIED_BY,
+        "implements": RelationType.IMPLEMENTS,
+    }
+    kind_map = {"product": (EntityType.PRODUCT, products), "requirement": (EntityType.REQUIREMENT, reqs)}
+    for rel in draft.relations:
+        rt = type_map.get(rel.rel_type)
+        if not rt:
+            continue
+        sk, smap = kind_map.get(rel.src_kind, (None, {}))
+        dk, dmap = kind_map.get(rel.dst_kind, (None, {}))
+        if not sk or rel.src_code not in smap or rel.dst_code not in dmap:
+            continue
+        db.add(
+            EntityRelation(
+                rel_type=rt,
+                src_type=sk,
+                src_id=smap[rel.src_code].id,
+                dst_type=dk,
+                dst_id=dmap[rel.dst_code].id,
+            )
+        )
 
 
 def persist_images(db: Session, doc: Document, images, captions: list[str]) -> None:

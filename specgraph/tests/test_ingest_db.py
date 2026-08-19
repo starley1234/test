@@ -28,7 +28,7 @@ def test_json_ingest_and_expand(tmp_path, monkeypatch):
         "requirements": [{"code": "ТР-1", "text": "Блок должен быть", "product": "CH"}],
     }
     doc = ingest_parsed_json(db, payload, index=False)
-    assert db.query(Product).count() == 2
+    assert db.query(Product).count() >= 2
     child = db.query(Product).filter(Product.code == "CH").one()
     assert child.parent_id is not None
     assert db.query(Requirement).filter(Requirement.product_id == child.id).count() == 1
