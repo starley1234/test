@@ -3,11 +3,11 @@ from sqlalchemy.orm import sessionmaker
 
 from specgraph.db import Base
 from specgraph.ingest.pipeline import ingest_parsed_json, make_ingest_report
-from specgraph.models import Requirement
-from specgraph.pipelines.reviews import apply_draft, set_draft
+from specgraph.models import Requirement, RequirementDraft
+from specgraph.pipelines.reviews import export_drafts, heuristic_drafts, set_draft
 
 
-def test_ingest_report_and_apply_draft(tmp_path, monkeypatch):
+def test_ingest_report_and_draft_does_not_mutate_twin(tmp_path, monkeypatch):
     from specgraph import config
 
     monkeypatch.setattr(config.settings, "upload_dir", tmp_path)
@@ -20,16 +20,21 @@ def test_ingest_report_and_apply_draft(tmp_path, monkeypatch):
         {
             "title": "t",
             "products": [{"code": "P", "name": "Блок"}],
-            "requirements": [{"code": "R1", "text": "должен быть", "product": "P"}],
+            "requirements": [{"code": "R1", "text": "питание 27 В", "product": "P"}],
         },
         index=False,
     )
-    rep = make_ingest_report(db, doc)
-    assert rep["requirements"] >= 1
+    assert make_ingest_report(db, doc)["requirements"] >= 1
     r = db.query(Requirement).filter_by(code="R1").one()
-    set_draft(db, r, "Блок должен выдавать 27 В.")
+    original = r.text
+    set_draft(db, r, "Должен: питание 27 В", reason="модальность", source="heuristic")
     db.commit()
-    apply_draft(db, r)
     db.refresh(r)
-    assert "27" in r.text
-    assert not (r.extra or {}).get("draft_text")
+    assert r.text == original
+    assert db.query(RequirementDraft).count() == 1
+    heuristic_drafts(db, [r.id])
+    db.refresh(r)
+    assert r.text == original
+    rep = export_drafts(db, doc.id)
+    assert rep["count"] >= 1
+    assert "xlsx" in (rep.get("downloads") or {}) or "md" in (rep.get("downloads") or {})

@@ -17,7 +17,9 @@ from sqlalchemy.orm import Session
 from specgraph.llm import invoke_chat
 from specgraph.retrieval.context import context_as_prompt, gather_context
 
-_CB: Any = None
+import threading
+
+_tls = threading.local()
 
 
 class PipelineState(TypedDict, total=False):
@@ -36,8 +38,9 @@ class PipelineState(TypedDict, total=False):
 
 
 def _notify(_state: PipelineState, ev: dict[str, Any]) -> None:
-    if _CB:
-        _CB(ev)
+    cb = getattr(_tls, "cb", None)
+    if cb:
+        cb(ev)
 
 
 def _retrieve(state: PipelineState, db: Session) -> PipelineState:
@@ -175,13 +178,12 @@ def run_pipeline(name: str, db: Session, **kwargs) -> dict[str, Any]:
             on_progress=kwargs.get("on_progress"),
         )
     app = _compile(entry["system"], db, slot=entry.get("slot") or "expensive")
-    global _CB
     payload = {k: v for k, v in kwargs.items() if k != "on_progress"}
-    _CB = kwargs.get("on_progress")
+    _tls.cb = kwargs.get("on_progress")
     try:
         out = app.invoke({"query": kwargs.get("query") or entry.get("title") or name, **payload})
     finally:
-        _CB = None
+        _tls.cb = None
     result = out["result"]
     result["pipeline"] = name
     result["slot"] = entry.get("slot")

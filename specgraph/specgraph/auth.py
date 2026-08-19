@@ -55,9 +55,11 @@ def is_admin(user: User | None) -> bool:
 
 
 def can_run_pipeline(user: User | None, pipeline: str) -> bool:
-    """Гость — да. Залогинен — admin / pipeline / роль с именем пайплайна."""
+    """Гость — если GUEST_PIPELINES. Залогинен — admin / pipeline / имя пайплайна."""
+    from specgraph.config import settings
+
     if user is None:
-        return True
+        return bool(settings.guest_pipelines)
     names = role_names(user)
     return bool(names & {"admin", "pipeline", pipeline})
 

@@ -279,6 +279,19 @@ class IndexBatch(Base):
     status: Mapped[str] = mapped_column(String(32), default="done")
 
 
+class RequirementDraft(Base):
+    """Предложение правки. Двойник из файла не меняем — только отчёт сотруднику."""
+
+    __tablename__ = "requirement_drafts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    requirement_id: Mapped[int] = mapped_column(ForeignKey("requirements.id"), index=True)
+    proposed: Mapped[str] = mapped_column(Text)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source: Mapped[str] = mapped_column(String(32), default="llm")  # llm | heuristic
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
 class PipelineRun(Base):
     """Прогон пайплайна в БД — переживает рестарт uvicorn."""
 

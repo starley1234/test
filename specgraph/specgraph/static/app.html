@@ -29,7 +29,7 @@
         <div class="text-lg font-semibold tracking-tight">SpecGraph</div>
         <div class="text-sm text-steel-400">требования изделия → проверка → файл</div>
       </div>
-      <a href="/" class="text-sm text-steel-100/80 hover:text-white underline-offset-2 hover:underline">Полный интерфейс</a>
+      <a href="/dev" class="text-sm text-steel-100/80 hover:text-white underline-offset-2 hover:underline">Для разработчика</a>
     </div>
   </header>
 
@@ -83,6 +83,7 @@
         <button data-pipe="validate-requirements" class="act bg-ink-800 hover:bg-ink-700 text-white rounded-lg px-4 py-2.5 font-medium">Проверить требования</button>
         <button data-pipe="help-write" class="act bg-white border border-ink-800 text-ink-800 rounded-lg px-4 py-2.5 font-medium">Помочь сформулировать</button>
         <button data-pipe="summarize" class="act bg-white border border-steel-400 text-ink-800 rounded-lg px-4 py-2.5 font-medium">Кратко пересказать</button>
+        <button type="button" id="dlDrafts" class="bg-white border border-steel-400 text-ink-800 rounded-lg px-4 py-2.5 font-medium">Черновики правок (Excel/MD)</button>
       </div>
       <p id="pipeMsg" class="mt-3 text-sm text-steel-600">Сначала соберите базу, затем нажмите одну кнопку.</p>
       <div id="result" class="mt-4 hidden">
@@ -151,7 +152,7 @@ async function refreshStats() {
       const rv = r.review || {};
       const badge = stub ? 'stub' : appx ? 'приложение' : (rv.pass === false ? 'замечание' : (rv.pass === true ? 'ок' : ''));
       const draft = r.draft_text
-        ? `<div class="mt-1 text-steel-600">черновик: ${esc(r.draft_text.slice(0,200))} <button class="underline" data-apply="${r.id}">принять</button></div>` : '';
+        ? `<div class="mt-1 text-steel-600">предложение (${esc(r.draft_source||'')}): ${esc(r.draft_text.slice(0,220))}</div>` : '';
       return `<div class="bg-white border border-steel-100 rounded-lg px-3 py-2">
         <span class="font-mono text-accent">${esc(r.code)}</span>
         ${badge ? `<span class="ml-2 text-xs">${esc(badge)}</span>` : ''}
@@ -159,10 +160,7 @@ async function refreshStats() {
         <div>${esc((r.text||'').slice(0,180))}</div>${draft}</div>`;
     }).join('') || '<p class="text-steel-600">Пока пусто — соберите базу.</p>';
     if (rec[0]) lastDoc = rec[0].document_id;
-    document.querySelectorAll('[data-apply]').forEach(b => b.onclick = async () => {
-      await fetch('/requirements/'+b.dataset.apply+'/apply-draft', {method:'POST'});
-      refreshStats();
-    });
+    ;
   } catch (_) {}
 }
 
@@ -263,11 +261,25 @@ async function runPipe(name) {
   $('dl').innerHTML = links.join('') || '<span class="text-steel-600">файл не собран</span>';
   $('out').textContent = last.output || last.result || 'готово';
   $('result').classList.remove('hidden');
-  $('pipeMsg').textContent = 'Готово. Скачайте привычный файл.';
+  const mode = last.mode || 'heuristic';
+  $('pipeMsg').textContent = (mode === 'llm' ? 'Модель. ' : 'Эвристика (нет ключа). ') + 'Двойник не менялся.';
   setStep(3);
+  refreshStats();
 }
 
 document.querySelectorAll('.act').forEach(b => b.onclick = () => runPipe(b.dataset.pipe));
+$('onlyFail').onchange = refreshStats;
+$('dlDrafts').onclick = async () => {
+  const q = lastDoc ? ('?document_id='+lastDoc) : '';
+  const r = await fetch('/drafts/export'+q).then(x => x.json());
+  const d = r.downloads || {};
+  $('result').classList.remove('hidden');
+  $('dl').innerHTML =
+    (d.xlsx ? `<a class="inline-block bg-accent text-white rounded-lg px-4 py-2" href="${d.xlsx}">Excel черновиков</a> ` : '') +
+    (d.md ? `<a class="inline-block border border-ink-800 rounded-lg px-4 py-2" href="${d.md}">Markdown</a>` : '');
+  $('out').textContent = (r.rows||[]).map(x => x.code + ' → ' + x.proposed).join('\\n') || 'Сначала «Помочь сформулировать».';
+  $('pipeMsg').textContent = r.count ? ('Черновиков: '+r.count+' — отдайте сотруднику, файл-двойник не менялся') : 'Черновиков нет';
+};
 refreshStats();
 renderQueue();
 </script>

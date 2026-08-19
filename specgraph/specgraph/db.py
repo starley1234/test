@@ -66,6 +66,7 @@ def init_db() -> None:
 
     Base.metadata.create_all(bind=engine)
     _migrate_columns()
+    _ensure_indexes()
     from specgraph.auth import ensure_roles, seed_admin
 
     s = SessionLocal()
@@ -92,6 +93,25 @@ def _migrate_columns() -> None:
         if rcols and "created_at" not in rcols:
             conn.execute(text("ALTER TABLE requirements ADD COLUMN created_at DATETIME"))
         conn.commit()
+
+
+def _ensure_indexes() -> None:
+    """Один текущий двойник на base_code. Пустые stub не индексируем."""
+    stmt = (
+        "CREATE UNIQUE INDEX IF NOT EXISTS uq_req_current_base "
+        "ON requirements (base_code) WHERE is_current = 1 AND base_code != ''"
+    )
+    if not str(engine.url).startswith("sqlite"):
+        stmt = (
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_req_current_base "
+            "ON requirements (base_code) WHERE is_current AND base_code <> ''"
+        )
+    try:
+        with engine.connect() as conn:
+            conn.execute(text(stmt))
+            conn.commit()
+    except Exception:
+        log.warning("индекс uq_req_current_base не создан (возможны дубли base_code)")
 
 
 def wipe_db() -> None:

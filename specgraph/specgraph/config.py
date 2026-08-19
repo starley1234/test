@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     embedding_dim: int = 384
     max_reqs_per_run: int = 40
     max_parallel_jobs: int = 3
+    guest_pipelines: bool = True
+    guest_max_reqs: int = 8
 
     admin_username: str = "admin"
     admin_password: str = "admin"

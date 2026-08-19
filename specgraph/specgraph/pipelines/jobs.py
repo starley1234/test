@@ -136,7 +136,7 @@ def start_job(
     if _running_count() >= int(settings.max_parallel_jobs):
         raise RuntimeError(f"уже идёт {_running_count()} прогона — подождите")
     ids = list(kwargs.get("requirement_ids") or [])
-    cap = int(settings.max_reqs_per_run)
+    cap = int(settings.guest_max_reqs if user_id is None else settings.max_reqs_per_run)
     if len(ids) > cap:
         kwargs = {**kwargs, "requirement_ids": ids[:cap], "truncated_to": cap}
     job = Job(id=uuid4().hex[:12], name=name, user_id=user_id)

@@ -26,17 +26,22 @@ def _need_pipe(name: str, user: User | None) -> None:
 
 @router.get("/", response_class=HTMLResponse)
 def ui():
-    """Классический UI (не ломаем). Конструктор — GET /app."""
+    """Вход для людей: конструктор."""
+    path = STATIC / "app.html"
+    if path.is_file():
+        return path.read_text(encoding="utf-8")
     return (STATIC / "index.html").read_text(encoding="utf-8")
 
 
 @router.get("/app", response_class=HTMLResponse)
 def ui_constructor():
-    """Альтернативный конструктор: загрузить → кнопка → результат."""
-    path = STATIC / "app.html"
-    if not path.is_file():
-        raise HTTPException(404, "constructor UI missing")
-    return path.read_text(encoding="utf-8")
+    return ui()
+
+
+@router.get("/dev", response_class=HTMLResponse)
+def ui_dev():
+    """Полный UI для разработчика."""
+    return (STATIC / "index.html").read_text(encoding="utf-8")
 
 
 @router.post("/documents", response_model=DocumentOut)
@@ -279,7 +284,7 @@ def _req_dump(r: Requirement) -> dict:
         "is_current": r.is_current,
         "created_at": r.created_at.isoformat() if getattr(r, "created_at", None) else None,
         "review": (r.extra or {}).get("review"),
-        "draft_text": (r.extra or {}).get("draft_text"),
+        "draft_text": None,
         "attributes": {a.key: a.value for a in r.attributes},
     }
 
@@ -296,7 +301,16 @@ def list_requirements(
         q = q.filter(Requirement.document_id == document_id)
     if product_id:
         q = q.filter(Requirement.product_id == product_id)
-    rows = [_req_dump(r) for r in q.all()]
+    reqs = q.all()
+    rows = [_req_dump(r) for r in reqs]
+    from specgraph.pipelines.reviews import latest_draft
+
+    for row, req in zip(rows, reqs, strict=True):
+        d = latest_draft(db, req.id)
+        if d:
+            row["draft_text"] = d.proposed
+            row["draft_reason"] = d.reason
+            row["draft_source"] = d.source
     if review == "fail":
         rows = [r for r in rows if r.get("review") and r["review"].get("pass") is False]
     if review == "draft":
@@ -594,14 +608,23 @@ def run_named_pipeline(
 @router.get("/exports/{filename}")
 def download_export(filename: str):
     from specgraph.pipelines.correctness import EXPORTS as C_EX
+    from specgraph.pipelines.exports import EXPORTS as E_EX
     from specgraph.pipelines.schematic import EXPORTS as S_EX
     from specgraph.pipelines.unit_tests import EXPORTS as U_EX
 
     name = Path(filename).name
-    path = next((p for p in (C_EX / name, S_EX / name, U_EX / name) if p.is_file()), None)
+    path = next((p for p in (C_EX / name, S_EX / name, U_EX / name, E_EX / name) if p.is_file()), None)
     if not path:
         raise HTTPException(404, "file not found")
     return FileResponse(path, filename=path.name)
+
+
+@router.get("/drafts/export")
+def export_drafts_report(document_id: int | None = None, db: Session = Depends(get_db)):
+    """Отчёт сотруднику. Текст из файла не меняем."""
+    from specgraph.pipelines.reviews import export_drafts
+
+    return export_drafts(db, document_id)
 
 
 @router.get("/requirements/{req_id}/revisions")
