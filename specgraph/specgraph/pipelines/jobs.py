@@ -23,6 +23,7 @@ class Job:
     tokens: dict[str, int] = field(default_factory=lambda: {"prompt": 0, "completion": 0, "total": 0})
     result: dict[str, Any] | None = None
     error: str | None = None
+    user_id: int | None = None
     lock: threading.Lock = field(default_factory=threading.Lock)
 
     def emit(self, ev: dict[str, Any]) -> None:
@@ -60,8 +61,15 @@ def _progress(job: Job) -> Callable[[dict[str, Any]], None]:
     return job.emit
 
 
-def start_job(name: str, kwargs: dict[str, Any], *, scheme_path: Path | None = None, scheme_name: str | None = None) -> Job:
-    job = Job(id=uuid4().hex[:12], name=name)
+def start_job(
+    name: str,
+    kwargs: dict[str, Any],
+    *,
+    scheme_path: Path | None = None,
+    scheme_name: str | None = None,
+    user_id: int | None = None,
+) -> Job:
+    job = Job(id=uuid4().hex[:12], name=name, user_id=user_id)
     with _JOBS_LOCK:
         _JOBS[job.id] = job
 

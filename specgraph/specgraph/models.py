@@ -80,6 +80,7 @@ class Document(Base):
     raw_text: Mapped[str | None] = mapped_column(Text, nullable=True)
     parse_meta: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     status: Mapped[str] = mapped_column(String(32), default="uploaded")
+    uploaded_by_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     products: Mapped[list[Product]] = relationship(back_populates="document")
@@ -220,6 +221,47 @@ class Attachment(Base):
     storage_path: Mapped[str] = mapped_column(String(1024))
     text_content: Mapped[str | None] = mapped_column(Text, nullable=True)
     extra: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+
+class Role(Base):
+    """Koseven/Kohana: roles.name уникален (login, admin, pipeline, …)."""
+
+    __tablename__ = "roles"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(32), unique=True)
+    description: Mapped[str] = mapped_column(String(255), default="")
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    email: Mapped[str] = mapped_column(String(254), unique=True)
+    username: Mapped[str] = mapped_column(String(32), unique=True)
+    password: Mapped[str] = mapped_column(String(128))
+    logins: Mapped[int] = mapped_column(Integer, default=0)
+    last_login: Mapped[int | None] = mapped_column(Integer, nullable=True)
+
+    roles: Mapped[list[Role]] = relationship(secondary="roles_users", lazy="selectin")
+
+
+class RoleUser(Base):
+    __tablename__ = "roles_users"
+
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    role_id: Mapped[int] = mapped_column(ForeignKey("roles.id", ondelete="CASCADE"), primary_key=True)
+
+
+class UserToken(Base):
+    __tablename__ = "user_tokens"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), index=True)
+    user_agent: Mapped[str] = mapped_column(String(40), default="")
+    token: Mapped[str] = mapped_column(String(64), unique=True)
+    created: Mapped[int] = mapped_column(Integer)
+    expires: Mapped[int] = mapped_column(Integer)
 
 
 class Embedding(Base):

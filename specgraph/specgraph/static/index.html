@@ -90,7 +90,11 @@
       <a href="#/pipelines" id="nav-pipelines">Пайплайны</a>
     </nav>
     <div class="bar">
-      <button class="danger" id="wipeBtn">Очистить БД</button>
+      <span class="muted" id="who">гость</span>
+      <button class="ghost" id="loginBtn">Войти</button>
+      <button class="ghost" id="regBtn">Регистрация</button>
+      <button class="ghost" id="logoutBtn" style="display:none">Выйти</button>
+      <button class="danger" id="wipeBtn" style="display:none">Очистить БД</button>
     </div>
   </header>
 
@@ -135,12 +139,24 @@
 const $ = (id) => document.getElementById(id);
 let bag = [];
 let docs = [], reqs = [], currentDoc = null, seen = new Set();
+let me = { guest: true, user: null };
+
+async function refreshMe() {
+  try { me = await j('/auth/me'); } catch { me = { guest: true, user: null }; }
+  const u = me.user;
+  $('who').textContent = u ? (u.username + ' [' + (u.roles||[]).join(',') + ']') : 'гость';
+  $('loginBtn').style.display = u ? 'none' : '';
+  $('regBtn').style.display = u ? 'none' : '';
+  $('logoutBtn').style.display = u ? '' : 'none';
+  $('wipeBtn').style.display = (u && (u.roles||[]).includes('admin')) ? '' : 'none';
+}
 
 function esc(s){return String(s||'').replace(/[&<>]/g,c=>({ '&':'&amp;','<':'&lt;','>':'&gt;' }[c]));}
 async function j(url, opt) {
-  const r = await fetch(url, opt);
+  const r = await fetch(url, { credentials: 'same-origin', ...(opt||{}) });
   if (!r.ok) throw new Error(await r.text());
-  return r.json();
+  const t = await r.text();
+  return t ? JSON.parse(t) : {};
 }
 
 function parseHash() {
@@ -185,6 +201,10 @@ async function route() {
       await renderDocuments(box);
     } else if (a === 'requirements' && parts[1]) {
       await renderReqPage(box, +parts[1]);
+    } else if (a === 'pipelines' && parts[1]) {
+      await renderPipelinePage(box, parts[1]);
+    } else if (a === 'pipelines') {
+      await renderPipelines(box);
     } else {
       box.innerHTML = '<div class="muted">нет такой страницы</div>';
     }
@@ -567,6 +587,19 @@ $('drop').addEventListener('drop', e => {
 $('clearBtn').onclick = () => { bag = []; renderQueue(); $('msg').textContent = 'список очищен'; };
 $('q').addEventListener('input', renderReqs);
 
+async function askAuth(path, title) {
+  const username = prompt(title + ': логин');
+  if (!username) return;
+  const password = prompt('пароль');
+  if (password == null) return;
+  await j(path, { method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin',
+    body: JSON.stringify({username, password}) });
+  await refreshMe();
+}
+$('loginBtn').onclick = () => askAuth('/auth/login', 'Вход');
+$('regBtn').onclick = () => askAuth('/auth/register', 'Регистрация');
+$('logoutBtn').onclick = async () => { await j('/auth/logout', {method:'POST'}); await refreshMe(); };
+
 $('wipeBtn').onclick = async () => {
   if (!confirm('Удалить все изделия, требования и документы из БД?')) return;
   try {
@@ -650,47 +683,6 @@ function handle(ev) {
     if (ev.documents && ev.documents[0]) currentDoc = ev.documents[0].id;
   }
 }
-
-$('matrix').onclick = async () => {
-  $('msg').textContent = 'матрица…';
-  try {
-    const res = await j('/pipelines/review-correctness', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({document_id: currentDoc}),
-    });
-    $('msg').innerHTML = (res.result||'готово')+' · <a href="'+(res.download||'#')+'" style="color:#3d9cf0">скачать</a>';
-  } catch(e) { $('msg').textContent = e.message; }
-};
-$('scheme').onclick = () => $('schemeFile').click();
-$('schemeFile').onchange = async () => {
-  const f = $('schemeFile').files[0];
-  if (!f) return;
-  $('msg').textContent = 'разбор схемы…';
-  const fd = new FormData();
-  fd.append('file', f);
-  if (currentDoc) fd.append('document_id', currentDoc);
-  try {
-    const res = await fetch('/pipelines/schematic-coverage', {method:'POST', body: fd});
-    if (!res.ok) throw new Error(await res.text());
-    const data = await res.json();
-    const cov = data.coverage || {};
-    const miss = (cov.missing||[]).map(m => m.name || m.node_id).join(', ') || 'нет';
-    $('msg').innerHTML = 'покрытие '+ (cov.coverage??0) +'% · не покрыто: '+esc(miss)+
-      ' · <a href="'+(data.download||'#')+'" style="color:#3d9cf0">отчёт</a>';
-  } catch(e) { $('msg').textContent = e.message; }
-  $('schemeFile').value = '';
-};
-$('unittests').onclick = async () => {
-  $('msg').textContent = 'тесты…';
-  try {
-    const res = await j('/pipelines/unit-tests', {
-      method:'POST', headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({document_id: currentDoc}),
-    });
-    const links = (res.files||[]).map(f => '<a href="'+f.download+'" style="color:#3d9cf0">'+esc(f.requirement)+'</a>').join(' · ');
-    $('msg').innerHTML = (res.count||0)+' xlsx<br>'+links;
-  } catch(e) { $('msg').textContent = e.message; }
-};
 
 window.addEventListener('hashchange', route);
 j('/overview').then(ov => {

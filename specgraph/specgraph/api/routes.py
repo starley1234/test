@@ -6,8 +6,10 @@ from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from sqlalchemy.orm import Session, joinedload
 
 from specgraph.api.schemas import DocumentOut, IngestJsonRequest, PipelineRequest, ProductOut, RetrievalRequest
+from specgraph.auth import can_run_pipeline, optional_user, require_admin
 from specgraph.config import settings
 from specgraph.db import get_db, wipe_db
+from specgraph.models import User
 from specgraph.ingest.ids import base_code
 from specgraph.ingest.pipeline import ingest_file, ingest_many, ingest_parsed_json
 from specgraph.models import Attachment, Document, EntityRelation, EntityType, Illustration, Product, RelationType, Requirement
@@ -17,25 +19,32 @@ router = APIRouter()
 STATIC = Path(__file__).resolve().parent.parent / "static"
 
 
+def _need_pipe(name: str, user: User | None) -> None:
+    if not can_run_pipeline(user, name):
+        raise HTTPException(403, f"нет роли для пайплайна {name}")
+
+
 @router.get("/", response_class=HTMLResponse)
 def ui():
     return (STATIC / "index.html").read_text(encoding="utf-8")
 
 
 @router.post("/documents", response_model=DocumentOut)
-async def upload_document(file: UploadFile = File(...), db: Session = Depends(get_db)):
+async def upload_document(
+    file: UploadFile = File(...), db: Session = Depends(get_db), user: User | None = Depends(optional_user)
+):
     suffix = Path(file.filename or "upload.bin").name
     tmp = settings.upload_dir / f"tmp_{uuid4().hex}_{suffix}"
     tmp.write_bytes(await file.read())
     try:
-        doc = ingest_file(db, tmp, suffix, index=False)
+        doc = ingest_file(db, tmp, suffix, index=False, uploaded_by_id=user.id if user else None)
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(400, f"ingest failed: {exc}") from exc
     return DocumentOut(id=doc.id, filename=doc.filename, kind=doc.kind.value, title=doc.title, status=doc.status)
 
 
 @router.post("/db/wipe")
-def wipe_database():
+def wipe_database(_: User = Depends(require_admin)):
     wipe_db()
     return {"ok": True, "cleared": True}
 
@@ -59,7 +68,9 @@ def overview(db: Session = Depends(get_db)):
 
 
 @router.post("/index")
-async def index_stream(files: list[UploadFile] = File(...), db: Session = Depends(get_db)):
+async def index_stream(
+    files: list[UploadFile] = File(...), db: Session = Depends(get_db), user: User | None = Depends(optional_user)
+):
     """Пакет файлов → поток NDJSON: файл за файлом и появившиеся сущности."""
     import json
 
@@ -73,7 +84,7 @@ async def index_stream(files: list[UploadFile] = File(...), db: Session = Depend
         packed.append((tmp, name))
 
     def gen():
-        for ev in iter_index(db, packed):
+        for ev in iter_index(db, packed, uploaded_by_id=user.id if user else None):
             yield json.dumps(ev, ensure_ascii=False) + "\n"
 
     return StreamingResponse(gen(), media_type="application/x-ndjson")
@@ -108,7 +119,17 @@ def upload_parsed_json(body: IngestJsonRequest, db: Session = Depends(get_db)):
 @router.get("/documents", response_model=list[DocumentOut])
 def list_documents(db: Session = Depends(get_db)):
     docs = db.query(Document).order_by(Document.id.desc()).all()
-    return [DocumentOut(id=d.id, filename=d.filename, kind=d.kind.value, title=d.title, status=d.status) for d in docs]
+    return [
+        DocumentOut(
+            id=d.id,
+            filename=d.filename,
+            kind=d.kind.value,
+            title=d.title,
+            status=d.status,
+            uploaded_by_id=d.uploaded_by_id,
+        )
+        for d in docs
+    ]
 
 
 @router.get("/documents/{doc_id}")
@@ -291,21 +312,28 @@ def retrieval_context(body: RetrievalRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/pipelines/validate-requirements")
-def pipeline_validate(body: PipelineRequest, db: Session = Depends(get_db)):
+def pipeline_validate(
+    body: PipelineRequest, db: Session = Depends(get_db), user: User | None = Depends(optional_user)
+):
+    _need_pipe("validate-requirements", user)
     from specgraph.pipelines.graphs import validate_requirements
 
     return validate_requirements(db, **body.model_dump())
 
 
 @router.post("/pipelines/generate-tests")
-def pipeline_tests(body: PipelineRequest, db: Session = Depends(get_db)):
+def pipeline_tests(body: PipelineRequest, db: Session = Depends(get_db), user: User | None = Depends(optional_user)):
+    _need_pipe("generate-tests", user)
     from specgraph.pipelines.graphs import generate_tests
 
     return generate_tests(db, **body.model_dump())
 
 
 @router.post("/pipelines/summarize")
-def pipeline_summarize(body: PipelineRequest, db: Session = Depends(get_db)):
+def pipeline_summarize(
+    body: PipelineRequest, db: Session = Depends(get_db), user: User | None = Depends(optional_user)
+):
+    _need_pipe("summarize", user)
     from specgraph.pipelines.graphs import summarize_context
 
     return summarize_context(db, **body.model_dump())
@@ -324,23 +352,14 @@ def list_pipelines():
     return out
 
 
-@router.post("/pipelines/runs/{name}")
-def start_named_run(name: str, body: PipelineRequest):
-    from specgraph.pipelines.graphs import _catalog
-    from specgraph.pipelines.jobs import start_job
-
-    if name.startswith("_") or name not in _catalog():
-        raise HTTPException(404, f"unknown pipeline: {name}")
-    job = start_job(name, body.model_dump())
-    return {"run_id": job.id, "name": name}
-
-
 @router.post("/pipelines/runs/schematic-coverage")
 async def start_schematic_run(
     file: UploadFile = File(...),
     document_id: int | None = None,
     requirement_ids: str | None = None,
+    user: User | None = Depends(optional_user),
 ):
+    _need_pipe("schematic-coverage", user)
     from specgraph.pipelines.jobs import start_job
 
     fname = Path(file.filename or "scheme.bin").name
@@ -356,18 +375,20 @@ async def start_schematic_run(
         {"document_id": document_id, "requirement_ids": ids},
         scheme_path=tmp,
         scheme_name=fname,
+        user_id=user.id if user else None,
     )
     return {"run_id": job.id, "name": "schematic-coverage"}
 
 
 @router.post("/pipelines/runs/{name}")
-def start_named_run(name: str, body: PipelineRequest):
+def start_named_run(name: str, body: PipelineRequest, user: User | None = Depends(optional_user)):
     from specgraph.pipelines.graphs import _catalog
     from specgraph.pipelines.jobs import start_job
 
     if name.startswith("_") or name not in _catalog():
         raise HTTPException(404, f"unknown pipeline: {name}")
-    job = start_job(name, body.model_dump())
+    _need_pipe(name, user)
+    job = start_job(name, body.model_dump(), user_id=user.id if user else None)
     return {"run_id": job.id, "name": name}
 
 
@@ -392,7 +413,10 @@ def stream_run(run_id: str):
 
 
 @router.post("/pipelines/review-correctness")
-def pipeline_correctness(body: PipelineRequest, db: Session = Depends(get_db)):
+def pipeline_correctness(
+    body: PipelineRequest, db: Session = Depends(get_db), user: User | None = Depends(optional_user)
+):
+    _need_pipe("review-correctness", user)
     from specgraph.pipelines.correctness import run_correctness_matrix
 
     return run_correctness_matrix(
@@ -404,7 +428,10 @@ def pipeline_correctness(body: PipelineRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/pipelines/unit-tests")
-def pipeline_unit_tests(body: PipelineRequest, db: Session = Depends(get_db)):
+def pipeline_unit_tests(
+    body: PipelineRequest, db: Session = Depends(get_db), user: User | None = Depends(optional_user)
+):
+    _need_pipe("unit-tests", user)
     from specgraph.pipelines.unit_tests import run_unit_tests
 
     return run_unit_tests(
@@ -422,7 +449,9 @@ async def pipeline_schematic(
     file: UploadFile = File(...),
     document_id: int | None = None,
     db: Session = Depends(get_db),
+    user: User | None = Depends(optional_user),
 ):
+    _need_pipe("schematic-coverage", user)
     from specgraph.pipelines.schematic import run_schematic_coverage
 
     name = Path(file.filename or "scheme.bin").name
@@ -435,9 +464,12 @@ async def pipeline_schematic(
 
 
 @router.post("/pipelines/{name}")
-def run_named_pipeline(name: str, body: PipelineRequest, db: Session = Depends(get_db)):
+def run_named_pipeline(
+    name: str, body: PipelineRequest, db: Session = Depends(get_db), user: User | None = Depends(optional_user)
+):
     from specgraph.pipelines.graphs import run_pipeline
 
+    _need_pipe(name, user)
     try:
         return run_pipeline(name, db, **body.model_dump())
     except KeyError:

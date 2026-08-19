@@ -34,7 +34,9 @@ from specgraph.models import (
 )
 
 
-def ingest_file(db: Session, src: Path, original_name: str, *, index: bool = True) -> Document:
+def ingest_file(
+    db: Session, src: Path, original_name: str, *, index: bool = True, uploaded_by_id: int | None = None
+) -> Document:
     kind = detect_kind(original_name)
     dest = settings.upload_dir / f"{uuid4().hex}_{original_name}"
     dest.write_bytes(src.read_bytes())
@@ -63,6 +65,7 @@ def ingest_file(db: Session, src: Path, original_name: str, *, index: bool = Tru
         raw_text=raw,
         parse_meta=meta,
         status="parsed",
+        uploaded_by_id=uploaded_by_id,
     )
     db.add(doc)
     db.flush()
@@ -93,7 +96,14 @@ def ingest_file(db: Session, src: Path, original_name: str, *, index: bool = Tru
     return doc
 
 
-def ingest_parsed_json(db: Session, payload: dict[str, Any], filename: str = "inline.json", *, index: bool = True) -> Document:
+def ingest_parsed_json(
+    db: Session,
+    payload: dict[str, Any],
+    filename: str = "inline.json",
+    *,
+    index: bool = True,
+    uploaded_by_id: int | None = None,
+) -> Document:
     import json
 
     dest = settings.upload_dir / f"{uuid4().hex}_{filename}"
@@ -107,6 +117,7 @@ def ingest_parsed_json(db: Session, payload: dict[str, Any], filename: str = "in
         raw_text=json.dumps(payload, ensure_ascii=False)[:50_000],
         parse_meta={"source": "api_json"},
         status="parsed",
+        uploaded_by_id=uploaded_by_id,
     )
     db.add(doc)
     db.flush()

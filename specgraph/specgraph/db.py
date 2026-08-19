@@ -65,13 +65,38 @@ def init_db() -> None:
         _switch_sqlite()
 
     Base.metadata.create_all(bind=engine)
+    _migrate_columns()
+    from specgraph.auth import ensure_roles, seed_admin
+
+    s = SessionLocal()
+    try:
+        ensure_roles(s)
+    finally:
+        s.close()
+    seed_admin()
     log.info("БД готова: %s", settings.database_url)
 
 
+_AUTH_TABLES = {"users", "roles", "roles_users", "user_tokens"}
+
+
+def _migrate_columns() -> None:
+    """Старые SQLite-файлы: добавить uploaded_by_id без Alembic."""
+    if not str(engine.url).startswith("sqlite"):
+        return
+    with engine.connect() as conn:
+        cols = {r[1] for r in conn.execute(text("PRAGMA table_info(documents)"))}
+        if cols and "uploaded_by_id" not in cols:
+            conn.execute(text("ALTER TABLE documents ADD COLUMN uploaded_by_id INTEGER"))
+            conn.commit()
+
+
 def wipe_db() -> None:
-    """Удаляет все таблицы и создаёт их заново. Файлы в uploads не трогаем."""
+    """Чистит граф (документы/требования/изделия). Пользователей и роли не трогает."""
     from specgraph import models  # noqa: F401
 
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
-    log.warning("БД очищена: %s", settings.database_url)
+    keep = {n: Base.metadata.tables[n] for n in _AUTH_TABLES if n in Base.metadata.tables}
+    drop = [t for n, t in Base.metadata.tables.items() if n not in _AUTH_TABLES]
+    Base.metadata.drop_all(bind=engine, tables=drop)
+    Base.metadata.create_all(bind=engine, tables=drop)
+    log.warning("Граф очищен, RBAC сохранён: %s", settings.database_url)

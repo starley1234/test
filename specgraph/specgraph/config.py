@@ -13,6 +13,10 @@ class Settings(BaseSettings):
     media_dir: Path = Path("./data/media")
     embedding_dim: int = 384
 
+    admin_username: str = "admin"
+    admin_password: str = "admin"
+    admin_email: str = "admin@local"
+
     cheap_base_url: str = "https://api.openai.com/v1"
     cheap_api_key: str = ""
     cheap_model: str = "gpt-4o-mini"

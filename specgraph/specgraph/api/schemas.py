@@ -30,6 +30,7 @@ class DocumentOut(BaseModel):
     kind: str
     title: str | None
     status: str
+    uploaded_by_id: int | None = None
 
     model_config = {"from_attributes": True}
 

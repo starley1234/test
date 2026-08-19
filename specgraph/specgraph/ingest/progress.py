@@ -59,7 +59,9 @@ def db_totals(db: Session) -> dict[str, int]:
     }
 
 
-def iter_index(db: Session, files: list[tuple[Path, str]]) -> Iterator[dict[str, Any]]:
+def iter_index(
+    db: Session, files: list[tuple[Path, str]], *, uploaded_by_id: int | None = None
+) -> Iterator[dict[str, Any]]:
     planned = [{"filename": n, "role": file_role(n)} for _, n in files]
     yield {"event": "queued", "files": planned, "totals": db_totals(db)}
 

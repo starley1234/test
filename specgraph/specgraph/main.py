@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
+from specgraph.api.auth_routes import router as auth_router
 from specgraph.api.routes import STATIC, router
 from specgraph.db import init_db
 
