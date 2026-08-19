@@ -19,7 +19,7 @@ async def lifespan(_: FastAPI):
 
 app = FastAPI(
     title="SpecGraph",
-    description="Загрузка Word/JSON спецификаций → граф изделий и требований → контекст для LLM-пайплайнов",
+    description="Загрузка Word/JSON → граф изделий и требований. MCP: POST /mcp",
     lifespan=lifespan,
 )
 app.include_router(auth_router)

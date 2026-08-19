@@ -22,6 +22,7 @@ class PipelineRequest(RetrievalRequest):
     query: str | None = Field(default=None)
     source_code: str | None = Field(default=None, description="Исходник модуля (если есть). Без него прогон не выполняется.")
     requirement_ids: list[int] | None = Field(default=None, description="Галочки: только эти требования")
+    debug: bool = Field(default=False, description="Писать в лог промпты и контекст")
 
 
 class DocumentOut(BaseModel):

@@ -1,7 +1,7 @@
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Body, Depends, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from sqlalchemy.orm import Session, joinedload
 
@@ -358,6 +358,78 @@ def pipeline_summarize(
     from specgraph.pipelines.graphs import summarize_context
 
     return summarize_context(db, **body.model_dump())
+
+
+@router.get("/tree")
+def product_tree(db: Session = Depends(get_db)):
+    prods = db.query(Product).order_by(Product.level, Product.id).all()
+    reqs = db.query(Requirement).filter(Requirement.is_current.is_(True)).all()
+    by_parent: dict[int | None, list] = {}
+    for p in prods:
+        by_parent.setdefault(p.parent_id, []).append(p)
+    req_by_p: dict[int | None, list] = {}
+    for r in reqs:
+        req_by_p.setdefault(r.product_id, []).append(r)
+
+    def node(p: Product) -> dict:
+        kids = [node(c) for c in by_parent.get(p.id, [])]
+        mine = [
+            {
+                "id": r.id,
+                "code": r.code,
+                "text": (r.text or "")[:160],
+                "kind": r.kind.value,
+                "created_at": r.created_at.isoformat() if getattr(r, "created_at", None) else None,
+            }
+            for r in req_by_p.get(p.id, [])
+            if not (r.extra or {}).get("stub")
+        ]
+        return {
+            "id": p.id,
+            "code": p.code,
+            "name": p.name,
+            "level": p.level,
+            "requirements": mine,
+            "children": kids,
+        }
+
+    roots = [node(p) for p in by_parent.get(None, [])]
+    orphan_reqs = [
+        {
+            "id": r.id,
+            "code": r.code,
+            "text": (r.text or "")[:160],
+            "kind": r.kind.value,
+            "created_at": r.created_at.isoformat() if getattr(r, "created_at", None) else None,
+        }
+        for r in req_by_p.get(None, [])
+        if not (r.extra or {}).get("stub")
+    ]
+    return {"roots": roots, "orphan_requirements": orphan_reqs}
+
+
+@router.get("/pipelines/{name}/blueprint")
+def pipeline_blueprint(name: str):
+    from specgraph.pipelines.blueprint import blueprint
+
+    try:
+        return blueprint(name)
+    except KeyError:
+        raise HTTPException(404, name) from None
+
+
+@router.post("/mcp")
+def mcp_rpc(body: dict = None):
+    from specgraph.mcp_server import handle_rpc
+
+    return handle_rpc(body)
+
+
+@router.get("/mcp/tools")
+def mcp_tools():
+    from specgraph.mcp_server import TOOLS
+
+    return {"tools": TOOLS}
 
 
 @router.get("/pipelines")

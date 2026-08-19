@@ -48,13 +48,13 @@
     .queue { margin-top: 10px; }
     .qfile { display: flex; justify-content: space-between; gap: 8px; align-items: center; padding: 6px 8px; border-radius: 8px; background: var(--surface); margin-bottom: 4px; font-size: 12px; }
     .qfile .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .tag { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 999px; background: #243041; color: var(--muted); }
-    .tag.spec { background: #14304a; color: #8ec8ff; }
-    .tag.attachment { background: #3a2e14; color: var(--warn); }
-    .tag.stub { background: #3a2e14; color: var(--warn); }
-    .tag.ok { background: #143326; color: var(--ok); }
-    .tag.err { background: #3a1418; color: var(--bad); }
-    .tag.run { background: #2a2540; color: #c4b5fd; }
+    .tag { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 999px; background: var(--hover); color: var(--text); border: 1px solid var(--line); }
+    .tag.spec { background: color-mix(in srgb, var(--acc) 18%, var(--surface)); color: var(--acc); border-color: var(--acc); }
+    .tag.attachment { background: color-mix(in srgb, var(--warn) 20%, var(--surface)); color: var(--warn); border-color: var(--warn); }
+    .tag.stub { background: color-mix(in srgb, var(--warn) 20%, var(--surface)); color: var(--warn); border-color: var(--warn); }
+    .tag.ok { background: color-mix(in srgb, var(--ok) 18%, var(--surface)); color: var(--ok); border-color: var(--ok); }
+    .tag.err { background: color-mix(in srgb, var(--bad) 18%, var(--surface)); color: var(--bad); border-color: var(--bad); }
+    .tag.run { background: color-mix(in srgb, var(--acc) 16%, var(--surface)); color: var(--acc); border-color: var(--acc); }
     .stat { display: flex; gap: 8px; flex-wrap: wrap; }
     .stat div { background: var(--surface); padding: 8px 10px; border-radius: 8px; min-width: 68px; }
     .stat b { display: block; font-size: 18px; }
@@ -94,6 +94,7 @@
       <a href="#/documents" id="nav-documents">Документы</a>
       <a href="#/pipelines" id="nav-pipelines">Пайплайны</a>
       <a href="#/history" id="nav-history">История</a>
+      <a href="#/tree" id="nav-tree">Дерево</a>
     </nav>
     <div class="bar">
       <span class="muted" id="who">гость</span>
@@ -182,7 +183,7 @@ function parseHash() {
 
 function setNav() {
   const p = parseHash().parts[0] || '';
-  ['index','products','documents','pipelines','history'].forEach(k => {
+  ['index','products','documents','pipelines','history','tree'].forEach(k => {
     const el = $('nav-'+k);
     if (el) el.classList.toggle('on', (k==='index' && !p) || p === k);
   });
@@ -222,6 +223,10 @@ async function route() {
       await renderPipelines(box);
     } else if (a === 'history') {
       await renderHistory(box);
+    } else if (a === 'tree') {
+      await renderTree(box);
+    } else if (a === 'diagram' && parts[1]) {
+      await renderDiagram(box, parts[1]);
     } else {
       box.innerHTML = '<div class="muted">нет такой страницы</div>';
     }
@@ -368,6 +373,44 @@ async function renderHistory(box) {
       </div>`).join('') || '<div class="muted">ещё не индексировали</div>'}`;
 }
 
+
+async function renderTree(box) {
+  const data = await j('/tree');
+  function rows(nodes, depth) {
+    let h = '';
+    for (const n of nodes) {
+      h += `<tr><td style="padding-left:${depth*16}px"><a class="code" href="#/products/${n.id}">${esc(n.code)}</a> ${esc(n.name)}</td><td class="muted">${(n.requirements||[]).length}</td></tr>`;
+      for (const r of n.requirements||[]) {
+        h += `<tr><td style="padding-left:${depth*16+20}px"><a class="code" href="#/requirements/${r.id}">${esc(r.code)}</a></td><td class="muted">${esc(fmtWhen(r.created_at))} · ${esc((r.text||'').slice(0,80))}</td></tr>`;
+      }
+      h += rows(n.children||[], depth+1);
+    }
+    return h;
+  }
+  box.innerHTML = `
+    <div class="crumbs"><a href="#/">Индекс</a> / Дерево</div>
+    <h3>Изделия и требования</h3>
+    <table>
+      <tr><th>узел</th><th>дата / текст</th></tr>
+      ${rows(data.roots||[], 0)}
+      ${(data.orphan_requirements||[]).map(r => `<tr><td><a class="code" href="#/requirements/${r.id}">${esc(r.code)}</a></td><td class="muted">без изделия · ${esc(fmtWhen(r.created_at))}</td></tr>`).join('')}
+    </table>`;
+}
+
+async function renderDiagram(box, name) {
+  const b = await j('/pipelines/'+name+'/blueprint');
+  box.innerHTML = `
+    <div class="crumbs"><a href="#/pipelines">Пайплайны</a> / <a href="#/pipelines/${esc(name)}">${esc(b.title)}</a> / схема</div>
+    <h3>${esc(b.title)}</h3>
+    <div class="muted">слот ${esc(b.slot||'—')} · ${esc(b.kind||'')}</div>
+    <pre>${esc(b.mermaid||'')}</pre>
+    ${(b.steps||[]).map((s,i) => `
+      <div class="card">
+        <div class="tag run">${i+1}</div> <b>${esc(s.title)}</b>
+        <pre>${esc((s.detail||'').slice(0,2500))}</pre>
+      </div>`).join('')}`;
+}
+
 async function renderPipelines(box) {
   const list = await j('/pipelines');
   box.innerHTML = `
@@ -377,6 +420,7 @@ async function renderPipelines(box) {
     ${list.map(p => `
       <div class="card">
         <a href="#/pipelines/${p.name}">${esc(p.title)}</a>
+        · <a href="#/diagram/${p.name}">схема</a>
         <div class="muted">${esc(p.name)} · слот ${esc(p.slot||'—')}</div>
       </div>`).join('')}`;
 }
@@ -399,7 +443,9 @@ async function renderPipelinePage(box, name) {
         <div class="bar" style="margin:8px 0">
           ${one ? '' : '<button class="ghost" type="button" id="pipeAll">все</button><button class="ghost" type="button" id="pipeNone">снять</button>'}
           <button id="pipeGo">Пуск</button>
+          <a href="#/diagram/${esc(name)}" class="muted">схема</a>
         </div>
+        <label class="chk"><input type="checkbox" id="pipeDebug" /> <span class="muted">отладка (промпты)</span></label>
         <input type="search" id="pipeFilter" placeholder="фильтр…" style="margin-bottom:8px" />
         <div id="pipeReqs" class="muted" style="max-height:55vh;overflow:auto">документ</div>
       </div>
@@ -462,7 +508,7 @@ async function renderPipelinePage(box, name) {
       } else {
         res = await fetch('/pipelines/runs/'+name, {
           method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin',
-          body: JSON.stringify({document_id: +docId, requirement_ids: ids}),
+          body: JSON.stringify({document_id: +docId, requirement_ids: ids, debug: !!$('pipeDebug').checked}),
         });
       }
       if (!res.ok) throw new Error(await res.text());
@@ -509,6 +555,7 @@ async function renderPipelinePage(box, name) {
     const tag = ev.event === 'error' ? 'err' : ev.event === 'done' ? 'ok' : 'run';
     const tu = ev.tokens && (ev.tokens.prompt || ev.tokens.completion) ? ' · '+(ev.tokens.prompt||0)+'/'+(ev.tokens.completion||0) : '';
     el.innerHTML = '<span class="tag '+tag+'">'+esc(ev.event||'')+'</span> '+esc(ev.step||'')+tu;
+    if (ev.debug) el.innerHTML += '<pre>'+esc(JSON.stringify(ev.debug,null,2).slice(0,6000))+'</pre>';
     $('pipeFeed').prepend(el);
     $('pipeMsg').textContent = ev.step || ev.event || '';
     if (ev.event === 'done' && ev.result) {

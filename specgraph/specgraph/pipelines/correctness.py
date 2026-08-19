@@ -129,6 +129,19 @@ def evaluate(
         if on_progress:
             on_progress({"event": "item", "step": f"оценка {r.code}", "index": i, "total": n, "code": r.code})
         ctx = expand_requirement(db, r.id)
+        if on_progress:
+            on_progress(
+                {
+                    "event": "debug",
+                    "step": f"промпт {r.code}",
+                    "debug": {
+                        "code": r.code,
+                        "text": (r.text or "")[:2000],
+                        "attributes": ctx.get("attributes"),
+                        "created_at": str(getattr(r, "created_at", "") or ""),
+                    },
+                }
+            )
         row = _llm_row(r, checklist, ctx)
         rows.append(row)
         if on_progress:

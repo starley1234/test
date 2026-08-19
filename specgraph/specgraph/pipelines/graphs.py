@@ -41,7 +41,6 @@ def _notify(_state: PipelineState, ev: dict[str, Any]) -> None:
 
 
 def _retrieve(state: PipelineState, db: Session) -> PipelineState:
-    _notify(state, {"event": "retrieve", "step": "чтение графа / контекста"})
     filt = _FILTER or {}
     ids = state.get("requirement_ids") or filt.get("requirement_ids")
     ctx = gather_context(
@@ -53,11 +52,21 @@ def _retrieve(state: PipelineState, db: Session) -> PipelineState:
         requirement_id=state.get("requirement_id") or filt.get("requirement_id"),
         requirement_ids=ids,
     )
-    return {**state, "context": ctx, "prompt": context_as_prompt(ctx)}
+    prompt = context_as_prompt(ctx)
+    dbg = bool(filt.get("debug") or state.get("debug"))
+    ev = {"event": "retrieve", "step": f"контекст: {len(ctx.get('requirements') or [])} треб."}
+    if dbg:
+        ev["debug"] = {"prompt": prompt[:12000], "requirement_ids": ids, "document_id": filt.get("document_id") or state.get("document_id")}
+    _notify(state, ev)
+    return {**state, "context": ctx, "prompt": prompt}
 
 
 def _reason(system: str, state: PipelineState, *, slot: str = "expensive") -> PipelineState:
-    _notify(state, {"event": "llm", "step": f"запрос модели ({slot})"})
+    dbg = bool((_FILTER or {}).get("debug") or state.get("debug"))
+    ev = {"event": "llm", "step": f"запрос модели ({slot})"}
+    if dbg:
+        ev["debug"] = {"system": system, "user": (state.get("prompt") or "")[:16000], "slot": slot}
+    _notify(state, ev)
     text, usage = invoke_chat(slot if slot in ("cheap", "expensive") else "expensive", system, state.get("prompt") or "")
     if usage.get("offline") or not text:
         draft = _offline_draft(system, state)
@@ -176,6 +185,7 @@ def run_pipeline(name: str, db: Session, **kwargs) -> dict[str, Any]:
         "requirement_id": payload.get("requirement_id"),
         "product_id": payload.get("product_id"),
         "query": payload.get("query"),
+        "debug": payload.get("debug"),
     }
     try:
         out = app.invoke({"query": kwargs.get("query") or entry.get("title") or name, **payload})
