@@ -66,4 +66,5 @@ UI: `http://localhost:8000/` · API: `http://localhost:8000/docs`
 - `POST /pipelines/validate-requirements`
 - `POST /pipelines/generate-tests`
 - `POST /pipelines/summarize`
+- `POST /pipelines/review-correctness` — матрица по методике А.3 → `.docx`
 - `POST /pipelines/{имя}` — любое имя из `catalog.json`
