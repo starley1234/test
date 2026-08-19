@@ -136,6 +136,9 @@ class Requirement(Base):
     kind: Mapped[RequirementKind] = mapped_column(Enum(RequirementKind), default=RequirementKind.UNKNOWN)
     section_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
     extra: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    base_code: Mapped[str] = mapped_column(String(256), index=True, default="")
+    revision: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    is_current: Mapped[bool] = mapped_column(default=True)
 
     document: Mapped[Document] = relationship(back_populates="requirements")
     product: Mapped[Product | None] = relationship(back_populates="requirements")
@@ -156,6 +159,21 @@ class RequirementAttribute(Base):
     value: Mapped[str] = mapped_column(Text)
 
     requirement: Mapped[Requirement] = relationship(back_populates="attributes")
+
+
+class RequirementRevision(Base):
+    """Старая ревизия. Пайплайны смотрят только is_current=True."""
+
+    __tablename__ = "requirement_revisions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    requirement_id: Mapped[int] = mapped_column(ForeignKey("requirements.id"), index=True)
+    document_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    code: Mapped[str] = mapped_column(String(256))
+    revision: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    text: Mapped[str] = mapped_column(Text)
+    attributes: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    superseded_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
 
 class Illustration(Base):

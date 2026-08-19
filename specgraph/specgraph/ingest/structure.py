@@ -13,6 +13,7 @@ from typing import Any
 
 from specgraph.ingest.extract import Block, ExtractedDoc
 from specgraph.ingest.ids import kind_from_code
+from specgraph.ingest.profile import card_fields, card_must_have, empty_source, kind_in_code
 
 DEC_CODE = re.compile(r"\b([A-ZА-Я]{2,6}\.\d{5,8}\.\d{2,4}(?:[-.]\d{2})?)\b")
 MUST = re.compile(r"(должен|должна|должно|должны|обеспечивать|предусмотреть|не менее|не более|shall)", re.I)
@@ -24,15 +25,13 @@ SOURCE = re.compile(r"^\[(\d+)\]\s+(.+)$")
 TABLE_CAPTION = re.compile(r"^таблица\s+[\d.]+\s*[–—-]?\s*(.*)$", re.I)
 QUOTED = re.compile(r"[«\"“]([^»\"”]{3,240})[»\"”]")
 
-KIND_BY_TOKEN = {
+KIND_BY_TOKEN = kind_in_code() or {
     "FNCT": "functional",
     "INTF": "interface",
     "TIME": "performance",
     "DATA": "design",
     "HWRQ": "design",
     "FCTR": "performance",
-    "SAFE": "safety",
-    "REL": "reliability",
 }
 
 KIND_HINTS = {
@@ -45,17 +44,7 @@ KIND_HINTS = {
     "functional": ("функц", "должен", "режим"),
 }
 
-CARD_LABELS = {
-    "идентификатор": "id",
-    "содержание": "text",
-    "обоснование": "rationale",
-    "источник требования": "source",
-    "источник": "source",
-    "пояснение": "note",
-    "допущение": "assumption",
-    "верификация": "verification",
-    "приоритет": "priority",
-}
+CARD_LABELS = card_fields()
 
 
 @dataclass
@@ -154,7 +143,7 @@ def split_source_refs(text: str) -> list[str]:
     out: list[str] = []
     for line in re.split(r"[\n\r;]+", text):
         line = line.strip().strip("«»\"'“”")
-        if not line or line in "-–—":
+        if not line or line.lower() in empty_source() or line in "-–—":
             continue
         out.append(line.split()[0])
     return _uniq(out)

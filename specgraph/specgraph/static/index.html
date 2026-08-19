@@ -113,7 +113,7 @@ function renderReqs() {
   $('reqs').innerHTML = rows.map(r => {
     const stub = r.extra && r.extra.stub;
     return `<div class="item" onclick="openReq(${r.id})">
-      <div class="code">${r.code}${stub?'<span class="tag stub">stub</span>':''}<span class="tag">${r.kind}</span></div>
+      <div class="code">${r.code}${stub?'<span class="tag stub">stub</span>':''}${r.revision?'<span class="tag">rev '+r.revision+'</span>':''}<span class="tag">${r.kind}</span></div>
       <div>${(r.text||'').slice(0,180)}</div>
     </div>`;
   }).join('') || '<div class="muted">нет требований</div>';
@@ -127,9 +127,11 @@ async function openReq(id) {
     `<div class="rel">↑ ${p.stub?'<span class="tag stub">не загружено</span>':''}<span class="code">${p.code}</span> ${(p.text||'').slice(0,160)}</div>`).join('');
   const atts = (r.attachments||[]).map(a =>
     `<div class="rel">📎 ${a.filename} <span class="muted">${(a.code||'')}</span><pre>${escapeHtml((a.text_content||'').slice(0,2500))}</pre></div>`).join('');
-  $('card').innerHTML = `
+    const hist = await j('/requirements/'+id+'/revisions').catch(()=>[]);
+    const histHtml = (hist||[]).map(h => `<div class="rel">rev ${h.revision||'—'} <span class="muted">${(h.text||'').slice(0,160)}</span></div>`).join('');
+    $('card').innerHTML = `
     <div class="code">${r.code}</div>
-    <div class="muted">${r.kind} · product ${r.product_code || r.product_id || '—'}</div>
+    <div class="muted">${r.kind} · rev ${r.revision || '—'} · product ${r.product_code || r.product_id || '—'}</div>
     <pre>${escapeHtml(r.text||'')}</pre>
     <h2>Вышестоящие</h2>${parents || '<div class="muted">нет ссылок</div>'}
     <h2>Атрибуты и файлы</h2>

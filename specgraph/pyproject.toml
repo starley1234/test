@@ -35,3 +35,6 @@ dev = ["pytest>=8.3", "ruff>=0.6"]
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["specgraph*"]
+
+[tool.setuptools.package-data]
+specgraph = ["profiles/*.json", "pipelines/*.json", "static/*"]

@@ -114,34 +114,33 @@ def _compile(system: str, db: Session, *, slot: str = "expensive"):
     return g.compile()
 
 
-VALIDATE_SYS = (
-    "Ты инженер по требованиям. По связкам изделие↔требования найди противоречия, "
-    "неполноту (нет верификации, нет численного критерия, висячие ссылки), дубли. "
-    "Ответ структурируй: критичность, код требования, рекомендация."
-)
+def _catalog() -> dict:
+    import json
+    from pathlib import Path
 
-TESTS_SYS = (
-    "Ты тест-дизайнер. По требованиям и атрибутам изделия сгенерируй проверяемые тест-кейсы: "
-    "id, предусловие, шаги, ожидаемый результат, трассировка на код требования и атрибуты изделия."
-)
+    path = Path(__file__).with_name("catalog.json")
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def run_pipeline(name: str, db: Session, **kwargs) -> dict[str, Any]:
+    entry = _catalog().get(name)
+    if not entry or name.startswith("_"):
+        raise KeyError(name)
+    app = _compile(entry["system"], db, slot=entry.get("slot") or "expensive")
+    out = app.invoke({"query": kwargs.get("query") or entry.get("title") or name, **kwargs})
+    result = out["result"]
+    result["pipeline"] = name
+    result["slot"] = entry.get("slot")
+    return result
 
 
 def validate_requirements(db: Session, **kwargs) -> dict[str, Any]:
-    app = _compile(VALIDATE_SYS, db, slot="expensive")
-    out = app.invoke({"query": kwargs.get("query") or "проверь требования", **kwargs})
-    return out["result"]
+    return run_pipeline("validate-requirements", db, **kwargs)
 
 
 def generate_tests(db: Session, **kwargs) -> dict[str, Any]:
-    app = _compile(TESTS_SYS, db, slot="expensive")
-    out = app.invoke({"query": kwargs.get("query") or "сгенерируй тесты", **kwargs})
-    return out["result"]
-
-
-SUM_SYS = "Суммируй связанные требования и атрибуты изделия кратко, по пунктам, без выдумок."
+    return run_pipeline("generate-tests", db, **kwargs)
 
 
 def summarize_context(db: Session, **kwargs) -> dict[str, Any]:
-    app = _compile(SUM_SYS, db, slot="cheap")
-    out = app.invoke({"query": kwargs.get("query") or "кратко суммируй контекст", **kwargs})
-    return out["result"]
+    return run_pipeline("summarize", db, **kwargs)

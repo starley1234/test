@@ -16,16 +16,24 @@ from specgraph.models import (
     Requirement,
     RequirementAttribute,
     RequirementKind,
+    RequirementRevision,
 )
 
 
 def find_by_code(db: Session, code: str) -> Requirement | None:
     if not code:
         return None
+    base = base_code(code)
+    current = (
+        db.query(Requirement)
+        .filter(Requirement.base_code == base, Requirement.is_current.is_(True))
+        .first()
+    )
+    if current:
+        return current
     exact = db.query(Requirement).filter(Requirement.code == code).first()
     if exact:
         return exact
-    base = base_code(code)
     return (
         db.query(Requirement)
         .filter((Requirement.code == base) | (Requirement.code.startswith(base + "/")))
@@ -52,6 +60,9 @@ def ensure_stub(
         text=note or f"Вышестоящее требование {code} (ещё не загружено).",
         kind=RequirementKind(k),
         extra={"stub": True},
+        base_code=base_code(code),
+        revision=code.split("/", 1)[1] if "/" in code else None,
+        is_current=True,
     )
     db.add(req)
     db.flush()
@@ -101,6 +112,41 @@ def link_derived(db: Session, child: Requirement, parent: Requirement) -> None:
     )
     if not child.parent_id:
         child.parent_id = parent.id
+
+
+def archive_revision(db: Session, req: Requirement) -> None:
+    db.add(
+        RequirementRevision(
+            requirement_id=req.id,
+            document_id=req.document_id,
+            code=req.code,
+            revision=req.revision,
+            text=req.text,
+            attributes={a.key: a.value for a in req.attributes},
+        )
+    )
+
+
+def apply_new_revision(db: Session, req: Requirement, *, code: str, text: str, extra: dict, document_id: int) -> bool:
+    """Если пришла другая ревизия или другой текст — сохранить старое, обновить текущее."""
+    new_base = base_code(code)
+    new_rev = code.split("/", 1)[1] if "/" in code else None
+    same_rev = (req.revision or "") == (new_rev or "") and req.code == code
+    same_text = (req.text or "") == (text or "")
+    if same_rev and same_text:
+        return False
+    if not (req.extra or {}).get("stub"):
+        archive_revision(db, req)
+    req.code = code
+    req.base_code = new_base
+    req.revision = new_rev
+    req.text = text
+    req.document_id = document_id
+    extra = dict(extra or {})
+    extra.pop("stub", None)
+    req.extra = extra
+    req.is_current = True
+    return True
 
 
 def resolve_pending(db: Session) -> int:

@@ -88,7 +88,10 @@ def expand_product(db: Session, product_id: int, depth: int = 2) -> dict[str, An
     reqs = (
         db.query(Requirement)
         .options(joinedload(Requirement.attributes))
-        .filter(Requirement.product_id.in_([prod.id] + [p.id for p in descendants] + [p.id for p in ancestors]))
+        .filter(
+            Requirement.is_current.is_(True),
+            Requirement.product_id.in_([prod.id] + [p.id for p in descendants] + [p.id for p in ancestors]),
+        )
         .all()
     )
     ills = db.query(Illustration).filter(

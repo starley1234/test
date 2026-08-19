@@ -52,8 +52,18 @@ UI: `http://localhost:8000/` · API: `http://localhost:8000/docs`
 
 Пакет файлов (спецификация + приложения `.docx`/`.xlsx`): `POST /documents/batch`
 
+Документация (простым языком):
+
+- [docs/GUIDE.md](docs/GUIDE.md) — как устроено, ревизии, настройки
+- [docs/PIPELINES.md](docs/PIPELINES.md) — новый пайплайн за 1 JSON
+- [docs/RELIABILITY.md](docs/RELIABILITY.md) — как сделать крепче
+
+Подписи карточки Word: `specgraph/profiles/default.json`  
+Пайплайны: `specgraph/pipelines/catalog.json`
+
 ## Пайплайны
 
-- `POST /pipelines/validate-requirements` — проверка полноты/противоречий
-- `POST /pipelines/generate-tests` — тесты по требованиям и атрибутам изделия
-- `POST /retrieval/context` — граф + семантика для произвольного вопроса
+- `POST /pipelines/validate-requirements`
+- `POST /pipelines/generate-tests`
+- `POST /pipelines/summarize`
+- `POST /pipelines/{имя}` — любое имя из `catalog.json`

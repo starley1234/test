@@ -9,7 +9,14 @@ from sqlalchemy.orm import Session
 from specgraph.config import settings
 from specgraph.ingest.extract import detect_kind, extract_any, extract_parsed_json
 from specgraph.ingest.ids import base_code
-from specgraph.ingest.resolve import ensure_stub, find_by_code, link_derived, merge_if_stub, resolve_pending
+from specgraph.ingest.resolve import (
+    apply_new_revision,
+    ensure_stub,
+    find_by_code,
+    link_derived,
+    merge_if_stub,
+    resolve_pending,
+)
 from specgraph.ingest.structure import DraftGraph, from_extracted, from_parsed_json
 from specgraph.models import (
     Attachment,
@@ -179,6 +186,16 @@ def persist_graph(db: Session, doc: Document, draft: DraftGraph) -> None:
                 ),
             )
             existing.document_id = doc.id
+            existing.base_code = base_code(dr.code)
+            existing.revision = dr.code.split("/", 1)[1] if "/" in dr.code else None
+            existing.is_current = True
+            req = existing
+        elif existing and not dr.stub:
+            apply_new_revision(db, existing, code=dr.code, text=dr.text, extra=extra, document_id=doc.id)
+            if dr.title:
+                existing.title = dr.title
+            existing.kind = RequirementKind(kind)
+            existing.section_path = dr.section_path
             req = existing
         else:
             req = Requirement(
@@ -191,6 +208,9 @@ def persist_graph(db: Session, doc: Document, draft: DraftGraph) -> None:
                 kind=RequirementKind(kind),
                 section_path=dr.section_path,
                 extra=extra,
+                base_code=base_code(dr.code),
+                revision=dr.code.split("/", 1)[1] if "/" in dr.code else None,
+                is_current=True,
             )
             db.add(req)
             db.flush()

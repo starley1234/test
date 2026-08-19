@@ -126,13 +126,16 @@ def _req_dump(r: Requirement) -> dict:
         "document_id": r.document_id,
         "section_path": r.section_path,
         "extra": r.extra or {},
+        "base_code": r.base_code,
+        "revision": r.revision,
+        "is_current": r.is_current,
         "attributes": {a.key: a.value for a in r.attributes},
     }
 
 
 @router.get("/requirements")
 def list_requirements(document_id: int | None = None, product_id: int | None = None, db: Session = Depends(get_db)):
-    q = db.query(Requirement).options(joinedload(Requirement.attributes))
+    q = db.query(Requirement).options(joinedload(Requirement.attributes)).filter(Requirement.is_current.is_(True))
     if document_id:
         q = q.filter(Requirement.document_id == document_id)
     if product_id:
