@@ -5,10 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>SpecGraph</title>
   <style>
-    :root {
-      --bg: #0e1218; --panel: #161c24; --line: #2a3442;
+    :root, html[data-theme="night"] {
+      --bg: #0e1218; --panel: #161c24; --line: #2a3442; --surface: #12181f;
       --text: #e8eef4; --muted: #8b9aab; --acc: #3d9cf0;
-      --ok: #3ecf8e; --warn: #e6b84d; --bad: #e06c75;
+      --ok: #3ecf8e; --warn: #e6b84d; --bad: #e06c75; --hover: #1f2833;
+    }
+    html[data-theme="day"] {
+      --bg: #f4f6f8; --panel: #ffffff; --line: #d5dde6; --surface: #eef2f6;
+      --text: #1a2330; --muted: #5b6b7c; --acc: #1b6fbf;
+      --ok: #1a8f5a; --warn: #b8860b; --bad: #c0392b; --hover: #e4ebf2;
     }
     * { box-sizing: border-box; }
     body { margin: 0; font: 14px/1.45 "IBM Plex Sans", "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--text); }
@@ -17,7 +22,7 @@
     header .sub { color: var(--muted); font-size: 13px; }
     nav { display: flex; gap: 4px; flex-wrap: wrap; }
     nav a { color: var(--muted); text-decoration: none; padding: 6px 10px; border-radius: 8px; }
-    nav a.on, nav a:hover { background: #1f2833; color: var(--text); }
+    nav a.on, nav a:hover { background: var(--hover); color: var(--text); }
     .bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
     button, .btn { background: var(--acc); color: #041018; border: 0; border-radius: 8px; padding: 8px 14px; font-weight: 600; cursor: pointer; font-size: 13px; }
     button:disabled { opacity: .45; cursor: not-allowed; }
@@ -36,12 +41,12 @@
     .crumbs a { color: var(--acc); text-decoration: none; }
     .drop {
       border: 1.5px dashed var(--line); border-radius: 12px; padding: 22px 14px;
-      text-align: center; color: var(--muted); background: #12181f; cursor: pointer;
+      text-align: center; color: var(--muted); background: var(--surface); cursor: pointer;
     }
     .drop.over { border-color: var(--acc); color: var(--acc); background: #132033; }
     .drop b { color: var(--text); display: block; margin-bottom: 4px; }
     .queue { margin-top: 10px; }
-    .qfile { display: flex; justify-content: space-between; gap: 8px; align-items: center; padding: 6px 8px; border-radius: 8px; background: #12181f; margin-bottom: 4px; font-size: 12px; }
+    .qfile { display: flex; justify-content: space-between; gap: 8px; align-items: center; padding: 6px 8px; border-radius: 8px; background: var(--surface); margin-bottom: 4px; font-size: 12px; }
     .qfile .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .tag { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 999px; background: #243041; color: var(--muted); }
     .tag.spec { background: #14304a; color: #8ec8ff; }
@@ -51,28 +56,28 @@
     .tag.err { background: #3a1418; color: var(--bad); }
     .tag.run { background: #2a2540; color: #c4b5fd; }
     .stat { display: flex; gap: 8px; flex-wrap: wrap; }
-    .stat div { background: #12181f; padding: 8px 10px; border-radius: 8px; min-width: 68px; }
+    .stat div { background: var(--surface); padding: 8px 10px; border-radius: 8px; min-width: 68px; }
     .stat b { display: block; font-size: 18px; }
     .item { padding: 8px 10px; border-radius: 8px; cursor: pointer; margin-bottom: 4px; animation: pop .25s ease; }
-    .item:hover, .item.on { background: #1f2833; }
+    .item:hover, .item.on { background: var(--hover); }
     .item.new { outline: 1px solid #3d9cf055; }
     .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; margin-bottom: 10px; }
     .card a { color: var(--acc); text-decoration: none; }
     .code { font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--acc); }
     .feed { font-size: 12px; }
-    .feed .ev { padding: 6px 0; border-bottom: 1px solid #1e2630; color: var(--muted); }
+    .feed .ev { padding: 6px 0; border-bottom: 1px solid var(--line); color: var(--muted); }
     .feed .ev b { color: var(--text); }
-    .progress { height: 6px; background: #1e2630; border-radius: 99px; overflow: hidden; margin: 10px 0; }
+    .progress { height: 6px; background: var(--line); border-radius: 99px; overflow: hidden; margin: 10px 0; }
     .progress > i { display: block; height: 100%; background: var(--acc); width: 0; transition: width .2s; }
-    pre { white-space: pre-wrap; background: #12181f; padding: 10px; border-radius: 8px; font-size: 13px; }
+    pre { white-space: pre-wrap; background: var(--surface); padding: 10px; border-radius: 8px; font-size: 13px; }
     table { width: 100%; border-collapse: collapse; font-size: 13px; }
     td, th { border-bottom: 1px solid var(--line); padding: 6px 4px; vertical-align: top; text-align: left; }
     .muted { color: var(--muted); }
     .rel { font-size: 12px; color: var(--muted); margin: 4px 0; }
-    input[type=search], select { width: 100%; background: #12181f; color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
-    .chk { display: flex; gap: 8px; align-items: flex-start; padding: 6px 0; border-bottom: 1px solid #1e2630; }
+    input[type=search], select { width: 100%; background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+    .chk { display: flex; gap: 8px; align-items: flex-start; padding: 6px 0; border-bottom: 1px solid var(--line); }
     .tok { display: flex; gap: 10px; flex-wrap: wrap; margin: 10px 0; }
-    .tok div { background: #12181f; padding: 10px 12px; border-radius: 8px; }
+    .tok div { background: var(--surface); padding: 10px 12px; border-radius: 8px; }
     .tok b { font-size: 20px; display: block; }
     @keyframes pop { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
   </style>
@@ -94,6 +99,7 @@
       <button class="ghost" id="loginBtn">Войти</button>
       <button class="ghost" id="regBtn">Регистрация</button>
       <button class="ghost" id="logoutBtn" style="display:none">Выйти</button>
+      <button class="ghost" id="themeBtn" title="день / ночь">День</button>
       <button class="danger" id="wipeBtn" style="display:none">Очистить БД</button>
     </div>
   </header>
@@ -140,6 +146,14 @@ const $ = (id) => document.getElementById(id);
 let bag = [];
 let docs = [], reqs = [], currentDoc = null, seen = new Set();
 let me = { guest: true, user: null };
+
+function applyTheme(t) {
+  document.documentElement.setAttribute('data-theme', t);
+  localStorage.setItem('specgraph-theme', t);
+  const b = $('themeBtn');
+  if (b) b.textContent = t === 'day' ? 'Ночь' : 'День';
+}
+applyTheme(localStorage.getItem('specgraph-theme') || 'night');
 
 async function refreshMe() {
   try { me = await j('/auth/me'); } catch { me = { guest: true, user: null }; }
@@ -685,6 +699,7 @@ function handle(ev) {
 }
 
 window.addEventListener('hashchange', route);
+refreshMe();
 j('/overview').then(ov => {
   renderStats(ov.totals);
   reqs = ov.recent_requirements || [];

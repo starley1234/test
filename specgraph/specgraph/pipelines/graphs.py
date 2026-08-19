@@ -26,6 +26,7 @@ class PipelineState(TypedDict, total=False):
     product_code: str | None
     document_id: int | None
     requirement_id: int | None
+    requirement_ids: list[int] | None
     context: dict[str, Any]
     prompt: str
     draft: str
@@ -46,7 +47,8 @@ def _retrieve(state: PipelineState, db: Session) -> PipelineState:
         product_id=state.get("product_id"),
         product_code=state.get("product_code"),
         document_id=state.get("document_id"),
-        requirement_id=state.get("requirement_id") if "requirement_id" in state else None,
+        requirement_id=state.get("requirement_id"),
+        requirement_ids=state.get("requirement_ids"),
     )
     return {**state, "context": ctx, "prompt": context_as_prompt(ctx)}
 
@@ -64,7 +66,7 @@ def _reason(system: str, state: PipelineState, *, slot: str = "expensive") -> Pi
 
 def _offline_draft(system: str, state: PipelineState) -> str:
     ctx = state.get("context") or {}
-    reqs = []
+    reqs = list(ctx.get("requirements") or [])
     for sg in ctx.get("subgraphs", []):
         reqs.extend(sg.get("requirements", []))
     if "тест" in system.lower() or "test" in system.lower():

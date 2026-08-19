@@ -6,7 +6,7 @@ from sqlalchemy.orm import sessionmaker
 from specgraph.db import Base
 from specgraph.ingest.pipeline import ingest_parsed_json
 from specgraph.models import Product, Requirement
-from specgraph.retrieval.context import expand_product
+from specgraph.retrieval.context import context_as_prompt, expand_product, gather_context
 
 
 def test_json_ingest_and_expand(tmp_path, monkeypatch):
@@ -37,3 +37,7 @@ def test_json_ingest_and_expand(tmp_path, monkeypatch):
     assert sg["ancestors"][0]["code"] == "ROOT"
     assert sg["requirements"]
     assert doc.id
+    ctx = gather_context(db, document_id=doc.id)
+    assert ctx["requirements"]
+    prompt = context_as_prompt(ctx)
+    assert "ТР-1" in prompt

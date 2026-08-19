@@ -145,11 +145,12 @@ def gather_context(
     product_id: int | None = None,
     product_code: str | None = None,
     requirement_id: int | None = None,
+    requirement_ids: list[int] | None = None,
     document_id: int | None = None,
     top_k: int = 8,
     hop: int = 2,
 ) -> dict[str, Any]:
-    bundle: dict[str, Any] = {"query": query, "hits": [], "subgraphs": [], "relations": []}
+    bundle: dict[str, Any] = {"query": query, "hits": [], "subgraphs": [], "relations": [], "requirements": []}
 
     if product_code and not product_id:
         p = db.query(Product).filter(Product.code == product_code).first()
@@ -160,11 +161,26 @@ def gather_context(
         bundle["subgraphs"].append(expand_product(db, product_id, depth=hop))
 
     if requirement_id:
-        r = db.query(Requirement).options(joinedload(Requirement.attributes)).get(requirement_id)
+        r = db.query(Requirement).options(joinedload(Requirement.attributes)).filter(Requirement.id == requirement_id).first()
         if r:
             bundle["seed_requirement"] = _req_dump(r)
             if r.product_id:
                 bundle["subgraphs"].append(expand_product(db, r.product_id, depth=hop))
+
+    ids = list(requirement_ids or [])
+    q = db.query(Requirement).options(joinedload(Requirement.attributes)).filter(Requirement.is_current.is_(True))
+    if ids:
+        q = q.filter(Requirement.id.in_(ids))
+    elif document_id:
+        q = q.filter(Requirement.document_id == document_id)
+    elif requirement_id or product_id:
+        q = None
+    if q is not None and (ids or document_id):
+        rows = [r for r in q.all() if not (r.extra or {}).get("stub") and not (r.extra or {}).get("appendix")]
+        bundle["requirements"] = [_req_dump(r) for r in rows[:200]]
+        for r in rows:
+            if r.product_id:
+                bundle["subgraphs"].append(expand_product(db, r.product_id, depth=1))
 
     if query:
         from specgraph.retrieval.embeddings import semantic_search
@@ -217,9 +233,20 @@ def gather_context(
 
 
 def context_as_prompt(bundle: dict[str, Any]) -> str:
-    parts = ["Контекст спецификации (связанные сущности):"]
+    parts = [
+        "Контекст спецификации уже в этом сообщении. Не проси данные ещё раз — анализируй список ниже.",
+    ]
     if bundle.get("query"):
         parts.append(f"Запрос: {bundle['query']}")
+    reqs = bundle.get("requirements") or []
+    if reqs:
+        parts.append(f"\n## Требования ({len(reqs)} шт.)")
+        for r in reqs:
+            attrs = r.get("attributes") or {}
+            attr_s = "; ".join(f"{k}={str(v)[:120]}" for k, v in list(attrs.items())[:8])
+            parts.append(f"- [{r.get('code')}] ({r.get('kind')}) {(r.get('text') or '')[:500]}")
+            if attr_s:
+                parts.append(f"  атрибуты: {attr_s}")
     seed = bundle.get("seed_requirement") or {}
     if seed.get("code"):
         parts.append(f"\n## Требование {seed['code']}")

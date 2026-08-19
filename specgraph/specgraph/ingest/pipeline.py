@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from specgraph.config import settings
 from specgraph.ingest.extract import detect_kind, extract_any, extract_parsed_json
@@ -353,6 +353,48 @@ def persist_self_attachment(db: Session, doc: Document, draft: DraftGraph) -> No
 
 
 def bind_attachment_to_requirements(db: Session, att: Attachment) -> int:
+    n = 0
+    stem = Path(att.filename).stem
+    needles = [x for x in (att.code, stem, base_code(stem)) if x]
+    pending = {
+        (obj.requirement_id, obj.key)
+        for obj in db.new
+        if isinstance(obj, RequirementAttribute)
+    }
+    with db.no_autoflush:
+        reqs = db.query(Requirement).options(joinedload(Requirement.attributes)).all()
+    for req in reqs:
+        blob = " ".join(
+            [
+                req.text or "",
+                req.code or "",
+                " ".join(f"{a.key}={a.value}" for a in req.attributes),
+            ]
+        )
+        if not any(nd and nd in blob for nd in needles):
+            continue
+        if not att.requirement_id:
+            att.requirement_id = req.id
+        key = f"файл:{att.filename}"[:128]
+        if key in {a.key for a in req.attributes} or (req.id, key) in pending:
+            continue
+        exists = (
+            db.query(RequirementAttribute)
+            .filter(RequirementAttribute.requirement_id == req.id, RequirementAttribute.key == key)
+            .first()
+        )
+        if exists:
+            continue
+        db.add(
+            RequirementAttribute(
+                requirement_id=req.id,
+                key=key,
+                value=(att.text_content or "")[:20000],
+            )
+        )
+        pending.add((req.id, key))
+        n += 1
+    return n
     n = 0
     stem = Path(att.filename).stem
     needles = [x for x in (att.code, stem, base_code(stem)) if x]

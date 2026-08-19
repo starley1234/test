@@ -22,6 +22,7 @@ app = FastAPI(
     description="Загрузка Word/JSON спецификаций → граф изделий и требований → контекст для LLM-пайплайнов",
     lifespan=lifespan,
 )
+app.include_router(auth_router)
 app.include_router(router)
 if STATIC.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")

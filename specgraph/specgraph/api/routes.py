@@ -150,6 +150,7 @@ def get_document(doc_id: int, db: Session = Depends(get_db)):
         "kind": d.kind.value if d.kind else None,
         "title": d.title,
         "status": d.status,
+        "uploaded_by_id": d.uploaded_by_id,
         "parse_meta": d.parse_meta,
         "counts": {"products": n_p, "requirements": n_r, "illustrations": n_i, "attachments": n_a},
         "products": [
