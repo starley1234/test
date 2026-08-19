@@ -3,77 +3,137 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>SpecGraph</title>
+  <title>SpecGraph — база требований</title>
   <style>
     :root {
-      --bg: #0f1419; --panel: #171e27; --line: #2a3542;
-      --text: #e8eef4; --muted: #8b9aab; --acc: #3d9cf0; --ok: #3ecf8e; --warn: #e6b84d; --bad: #e06c75;
+      --bg: #0e1218; --panel: #161c24; --line: #2a3442;
+      --text: #e8eef4; --muted: #8b9aab; --acc: #3d9cf0;
+      --ok: #3ecf8e; --warn: #e6b84d; --bad: #e06c75;
     }
     * { box-sizing: border-box; }
     body { margin: 0; font: 14px/1.45 "IBM Plex Sans", "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--text); }
-    header { padding: 16px 22px; border-bottom: 1px solid var(--line); display: flex; gap: 16px; align-items: center; }
-    header h1 { font-size: 18px; margin: 0; font-weight: 600; }
-    header span { color: var(--muted); }
-    .wrap { display: grid; grid-template-columns: 320px 1fr 380px; height: calc(100vh - 58px); }
-    aside, main, .detail { overflow: auto; border-right: 1px solid var(--line); padding: 16px; }
-    .detail { border-right: none; }
-    h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 10px; }
-    .drop { border: 1px dashed var(--line); border-radius: 10px; padding: 16px; text-align: center; color: var(--muted); background: #12181f; }
-    .drop.over { border-color: var(--acc); color: var(--acc); }
-    button, .btn { background: var(--acc); color: #041018; border: 0; border-radius: 8px; padding: 8px 12px; font-weight: 600; cursor: pointer; }
+    header { padding: 14px 20px; border-bottom: 1px solid var(--line); display: flex; gap: 16px; align-items: center; justify-content: space-between; }
+    header h1 { font-size: 18px; margin: 0; }
+    header .sub { color: var(--muted); font-size: 13px; }
+    .bar { display: flex; gap: 8px; flex-wrap: wrap; }
+    button, .btn { background: var(--acc); color: #041018; border: 0; border-radius: 8px; padding: 8px 14px; font-weight: 600; cursor: pointer; }
+    button:disabled { opacity: .45; cursor: not-allowed; }
     button.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); }
-    input[type=search], select { width: 100%; background: #12181f; color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
-    .item { padding: 8px 10px; border-radius: 8px; cursor: pointer; margin-bottom: 4px; }
-    .item:hover, .item.on { background: #1f2833; }
-    .code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--acc); }
-    .tag { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 999px; background: #243041; color: var(--muted); margin-left: 6px; }
+    .layout { display: grid; grid-template-columns: 340px 1fr 360px; height: calc(100vh - 56px); }
+    .col { overflow: auto; border-right: 1px solid var(--line); padding: 16px; }
+    .col:last-child { border-right: 0; }
+    h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin: 18px 0 8px; }
+    h2:first-child { margin-top: 0; }
+    .drop {
+      border: 1.5px dashed var(--line); border-radius: 12px; padding: 22px 14px;
+      text-align: center; color: var(--muted); background: #12181f; cursor: pointer;
+    }
+    .drop.over { border-color: var(--acc); color: var(--acc); background: #132033; }
+    .drop b { color: var(--text); display: block; margin-bottom: 4px; }
+    .queue { margin-top: 10px; }
+    .qfile { display: flex; justify-content: space-between; gap: 8px; align-items: center; padding: 6px 8px; border-radius: 8px; background: #12181f; margin-bottom: 4px; font-size: 12px; }
+    .qfile .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tag { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 999px; background: #243041; color: var(--muted); }
+    .tag.spec { background: #14304a; color: #8ec8ff; }
+    .tag.attachment { background: #3a2e14; color: var(--warn); }
     .tag.stub { background: #3a2e14; color: var(--warn); }
-    .tag.fn { background: #143326; color: var(--ok); }
-    pre { white-space: pre-wrap; background: #12181f; padding: 12px; border-radius: 8px; font-size: 13px; }
-    table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    td, th { border-bottom: 1px solid var(--line); padding: 6px 4px; vertical-align: top; text-align: left; }
-    .muted { color: var(--muted); }
-    .stat { display: flex; gap: 10px; flex-wrap: wrap; margin: 10px 0 16px; }
+    .tag.ok { background: #143326; color: var(--ok); }
+    .tag.err { background: #3a1418; color: var(--bad); }
+    .tag.run { background: #2a2540; color: #c4b5fd; }
+    .stat { display: flex; gap: 8px; flex-wrap: wrap; }
+    .stat div { background: #12181f; padding: 8px 10px; border-radius: 8px; min-width: 68px; }
     .stat b { display: block; font-size: 18px; }
-    .stat div { background: #12181f; padding: 8px 10px; border-radius: 8px; min-width: 72px; }
+    .item { padding: 8px 10px; border-radius: 8px; cursor: pointer; margin-bottom: 4px; animation: pop .25s ease; }
+    .item:hover, .item.on { background: #1f2833; }
+    .item.new { outline: 1px solid #3d9cf055; }
+    .code { font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--acc); }
+    .feed { font-size: 12px; }
+    .feed .ev { padding: 6px 0; border-bottom: 1px solid #1e2630; color: var(--muted); }
+    .feed .ev b { color: var(--text); }
+    .progress { height: 6px; background: #1e2630; border-radius: 99px; overflow: hidden; margin: 10px 0; }
+    .progress > i { display: block; height: 100%; background: var(--acc); width: 0; transition: width .2s; }
+    pre { white-space: pre-wrap; background: #12181f; padding: 10px; border-radius: 8px; font-size: 13px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    td, th { border-bottom: 1px solid var(--line); padding: 5px 4px; vertical-align: top; text-align: left; }
+    .muted { color: var(--muted); }
     .rel { font-size: 12px; color: var(--muted); margin: 4px 0; }
+    input[type=search] { width: 100%; background: #12181f; color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+    @keyframes pop { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
   </style>
 </head>
 <body>
   <header>
-    <h1>SpecGraph</h1>
-    <span>загрузка спецификаций → изделия, требования, приложения, связи</span>
+    <div>
+      <h1>SpecGraph</h1>
+      <div class="sub">положите файлы → Индексировать → смотрите, как появляются сущности</div>
+    </div>
+    <div class="bar">
+      <button class="ghost" id="matrix">Матрица корректности</button>
+      <button class="ghost" id="unittests">Модульные тесты</button>
+    </div>
   </header>
-  <div class="wrap">
-    <aside>
-      <h2>Загрузка</h2>
-      <div class="drop" id="drop">Перетащите .docx / .xlsx / .json<br>или выберите несколько файлов
+  <div class="layout">
+    <div class="col">
+      <h2>Файлы в пакет</h2>
+      <div class="drop" id="drop">
+        <b>Перетащите сюда Word / Excel / JSON</b>
+        спецификация и вложения к требованиям
         <div style="margin-top:10px"><input id="files" type="file" multiple /></div>
       </div>
-      <div style="margin:10px 0; display:flex; gap:8px; flex-wrap:wrap">
-        <button id="upload">Загрузить пакет</button>
-        <button class="ghost" id="refresh">Обновить</button>
-        <button class="ghost" id="matrix">Матрица корректности</button>
-        <button class="ghost" id="unittests">Модульные тесты</button>
+      <div class="queue" id="queue"></div>
+      <div style="margin:12px 0; display:flex; gap:8px">
+        <button id="indexBtn">Индексировать</button>
+        <button class="ghost" id="clearBtn">Очистить список</button>
       </div>
-      <div id="msg" class="muted"></div>
-      <h2 style="margin-top:22px">Документы</h2>
-      <div id="docs"></div>
-    </aside>
-    <main>
-      <h2>Требования</h2>
+      <div class="progress"><i id="bar"></i></div>
+      <div class="muted" id="msg">ожидание файлов</div>
+      <h2>Ход индексации</h2>
+      <div class="feed" id="feed"></div>
+    </div>
+    <div class="col">
+      <h2>База</h2>
       <div class="stat" id="stats"></div>
+      <h2>Появившиеся сущности</h2>
       <input type="search" id="q" placeholder="фильтр по коду или тексту…" />
       <div id="reqs" style="margin-top:10px"></div>
-    </main>
-    <section class="detail">
+    </div>
+    <div class="col">
       <h2>Карточка</h2>
-      <div id="card" class="muted">Выберите требование</div>
-    </section>
+      <div id="card" class="muted">Выберите требование справа</div>
+      <h2>Документы</h2>
+      <div id="docs"></div>
+    </div>
   </div>
 <script>
 const $ = (id) => document.getElementById(id);
-let docs = [], reqs = [], products = [], currentDoc = null;
+let bag = []; // File[]
+let docs = [], reqs = [], currentDoc = null, seen = new Set();
+
+function roleOf(name) {
+  const n = name.toLowerCase();
+  if (n.endsWith('.xlsx') || n.endsWith('.xlsm')) return 'attachment';
+  const stem = name.replace(/\.[^.]+$/, '');
+  return (stem.split('.').length - 1) >= 2 ? 'attachment' : 'spec';
+}
+
+function renderQueue() {
+  $('queue').innerHTML = bag.map((f,i) => `
+    <div class="qfile">
+      <span class="name">${esc(f.name)}</span>
+      <span class="tag ${roleOf(f.name)}">${roleOf(f.name)==='spec'?'спецификация':'вложение'}</span>
+    </div>`).join('') || '<div class="muted">список пуст</div>';
+  $('indexBtn').disabled = !bag.length;
+}
+
+function addFiles(list) {
+  for (const f of list) {
+    if (![...bag].some(x => x.name===f.name && x.size===f.size)) bag.push(f);
+  }
+  renderQueue();
+  $('msg').textContent = bag.length + ' файл(ов) в пакете';
+}
+
+function esc(s){return String(s||'').replace(/[&<>]/g,c=>({ '&':'&amp;','<':'&lt;','>':'&gt;' }[c]));}
 
 async function j(url, opt) {
   const r = await fetch(url, opt);
@@ -81,116 +141,204 @@ async function j(url, opt) {
   return r.json();
 }
 
-async function loadDocs() {
-  docs = await j('/documents');
-  $('docs').innerHTML = docs.map(d => `
-    <div class="item ${currentDoc===d.id?'on':''}" onclick="selectDoc(${d.id})">
-      <div>${d.title || d.filename}</div>
-      <div class="muted">${d.filename} · ${d.status}</div>
-    </div>`).join('') || '<div class="muted">пока пусто</div>';
+function log(html) {
+  const el = $('feed');
+  const d = document.createElement('div');
+  d.className = 'ev';
+  d.innerHTML = html;
+  el.prepend(d);
 }
 
-async function selectDoc(id) {
-  currentDoc = id;
-  const qs = id ? ('?document_id='+id) : '';
-  const [info, r, p] = await Promise.all([
-    id ? j('/documents/'+id) : {counts:{}},
-    j('/requirements'+qs),
-    j('/products'+qs),
-  ]);
-  reqs = r; products = p;
-  const c = info.counts || {};
-  $('stats').innerHTML = `
-    <div><b>${c.products ?? p.length}</b><span class="muted">изделия</span></div>
-    <div><b>${c.requirements ?? r.length}</b><span class="muted">требования</span></div>
-    <div><b>${c.illustrations ?? 0}</b><span class="muted">рис.</span></div>
-    <div><b>${c.attachments ?? 0}</b><span class="muted">файлы</span></div>`;
+function setBar(i, n) {
+  $('bar').style.width = (n ? Math.round(100*i/n) : 0) + '%';
+}
+
+function mergeReqs(list, isNew) {
+  const byId = new Map(reqs.map(r => [r.id, r]));
+  for (const r of list) {
+    if (!byId.has(r.id)) {
+      if (isNew) seen.add(r.id);
+      reqs.unshift(r);
+      byId.set(r.id, r);
+    }
+  }
   renderReqs();
-  loadDocs();
+}
+
+function renderStats(t) {
+  $('stats').innerHTML = `
+    <div><b>${t.documents??0}</b><span class="muted">док.</span></div>
+    <div><b>${t.requirements??0}</b><span class="muted">треб.</span></div>
+    <div><b>${t.products??0}</b><span class="muted">изделия</span></div>
+    <div><b>${t.attachments??0}</b><span class="muted">влож.</span></div>`;
 }
 
 function renderReqs() {
   const q = $('q').value.toLowerCase();
-  const rows = reqs.filter(r => !q || (r.code+' '+r.text).toLowerCase().includes(q));
+  const rows = reqs.filter(r => !q || (r.code+' '+(r.text||'')).toLowerCase().includes(q));
   $('reqs').innerHTML = rows.map(r => {
-    const stub = r.extra && r.extra.stub;
-    return `<div class="item" onclick="openReq(${r.id})">
-      <div class="code">${r.code}${stub?'<span class="tag stub">stub</span>':''}${r.revision?'<span class="tag">rev '+r.revision+'</span>':''}<span class="tag">${r.kind}</span></div>
-      <div>${(r.text||'').slice(0,180)}</div>
+    const stub = r.extra && r.extra.stub || r.stub;
+    return `<div class="item ${seen.has(r.id)?'new':''}" onclick="openReq(${r.id})">
+      <div class="code">${esc(r.code)}
+        ${stub?'<span class="tag stub">stub</span>':''}
+        ${r.revision?'<span class="tag">rev '+esc(r.revision)+'</span>':''}
+        ${r.kind?'<span class="tag">'+esc(r.kind)+'</span>':''}
+      </div>
+      <div>${esc((r.text||'').slice(0,160))}</div>
     </div>`;
-  }).join('') || '<div class="muted">нет требований</div>';
+  }).join('') || '<div class="muted">ещё нет требований — проиндексируйте пакет</div>';
 }
 
 async function openReq(id) {
   const r = await j('/requirements/'+id);
   const attrs = Object.entries(r.attributes||{}).map(([k,v]) =>
-    `<tr><th>${k}</th><td>${escapeHtml(String(v).slice(0,4000))}</td></tr>`).join('');
+    `<tr><th>${esc(k)}</th><td>${esc(String(v).slice(0,4000))}</td></tr>`).join('');
   const parents = (r.parents||[]).map(p =>
-    `<div class="rel">↑ ${p.stub?'<span class="tag stub">не загружено</span>':''}<span class="code">${p.code}</span> ${(p.text||'').slice(0,160)}</div>`).join('');
+    `<div class="rel">↑ ${p.stub?'<span class="tag stub">не загружено</span>':''}<span class="code">${esc(p.code)}</span> ${esc((p.text||'').slice(0,160))}</div>`).join('');
   const atts = (r.attachments||[]).map(a =>
-    `<div class="rel">📎 ${a.filename} <span class="muted">${(a.code||'')}</span><pre>${escapeHtml((a.text_content||'').slice(0,2500))}</pre></div>`).join('');
-    const hist = await j('/requirements/'+id+'/revisions').catch(()=>[]);
-    const histHtml = (hist||[]).map(h => `<div class="rel">rev ${h.revision||'—'} <span class="muted">${(h.text||'').slice(0,160)}</span></div>`).join('');
-    $('card').innerHTML = `
-    <div class="code">${r.code}</div>
-    <div class="muted">${r.kind} · rev ${r.revision || '—'} · product ${r.product_code || r.product_id || '—'}</div>
-    <pre>${escapeHtml(r.text||'')}</pre>
-    <h2>Вышестоящие</h2>${parents || '<div class="muted">нет ссылок</div>'}
-    <h2>Атрибуты и файлы</h2>
-    <table>${attrs}</table>
-    ${atts}`;
+    `<div class="rel">📎 ${esc(a.filename)} <pre>${esc((a.text_content||'').slice(0,2000))}</pre></div>`).join('');
+  $('card').innerHTML = `
+    <div class="code">${esc(r.code)}</div>
+    <div class="muted">${esc(r.kind||'')} · rev ${esc(r.revision||'—')}</div>
+    <pre>${esc(r.text||'')}</pre>
+    <h2>Вышестоящие</h2>${parents || '<div class="muted">нет</div>'}
+    <h2>Атрибуты и файлы</h2><table>${attrs}</table>${atts}`;
 }
 
-function escapeHtml(s){return s.replace(/[&<>]/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;' }[c]));}
+async function loadDocs() {
+  docs = await j('/documents');
+  $('docs').innerHTML = docs.map(d => `
+    <div class="item ${currentDoc===d.id?'on':''}" onclick="selectDoc(${d.id})">
+      <div>${esc(d.title || d.filename)}</div>
+      <div class="muted">${esc(d.filename)} · ${esc(d.status)}</div>
+    </div>`).join('') || '<div class="muted">нет документов</div>';
+}
 
+async function selectDoc(id) {
+  currentDoc = id;
+  const qs = id ? ('?document_id='+id) : '';
+  const [info, r] = await Promise.all([
+    id ? j('/documents/'+id) : {counts:{}},
+    j('/requirements'+qs),
+  ]);
+  reqs = r;
+  const ov = await j('/overview');
+  renderStats(ov.totals);
+  renderReqs();
+  loadDocs();
+}
+
+$('drop').addEventListener('click', e => { if (e.target.id!=='files') $('files').click(); });
+$('files').addEventListener('change', e => addFiles(e.target.files));
+['dragover','dragenter'].forEach(ev => $('drop').addEventListener(ev, e => { e.preventDefault(); $('drop').classList.add('over'); }));
+$('drop').addEventListener('dragleave', () => $('drop').classList.remove('over'));
+$('drop').addEventListener('drop', e => {
+  e.preventDefault(); $('drop').classList.remove('over');
+  addFiles(e.dataTransfer.files);
+});
+$('clearBtn').onclick = () => { bag = []; renderQueue(); $('msg').textContent = 'список очищен'; };
 $('q').addEventListener('input', renderReqs);
-$('refresh').onclick = () => selectDoc(currentDoc);
+
+$('indexBtn').onclick = async () => {
+  if (!bag.length) return;
+  $('indexBtn').disabled = true;
+  $('msg').textContent = 'индексация…';
+  $('feed').innerHTML = '';
+  const fd = new FormData();
+  for (const f of bag) fd.append('files', f);
+  try {
+    const res = await fetch('/index', { method: 'POST', body: fd });
+    if (!res.ok) throw new Error(await res.text());
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    while (true) {
+      const {value, done} = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, {stream: true});
+      const lines = buf.split('\n');
+      buf = lines.pop();
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        handle(JSON.parse(line));
+      }
+    }
+    if (buf.trim()) handle(JSON.parse(buf));
+    bag = [];
+    renderQueue();
+    await loadDocs();
+  } catch (e) {
+    $('msg').textContent = e.message;
+    log('<span class="tag err">ошибка</span> '+esc(e.message));
+  }
+  $('indexBtn').disabled = false;
+};
+
+function handle(ev) {
+  if (ev.event === 'queued') {
+    log('<span class="tag">пакет</span> '+ev.files.map(f => f.filename).join(', '));
+    if (ev.totals) renderStats(ev.totals);
+  }
+  if (ev.event === 'file_start') {
+    setBar(ev.index-1, ev.total);
+    $('msg').textContent = ev.filename + ' — ' + ev.step;
+    log('<span class="tag run">'+ev.index+'/'+ev.total+'</span> <b>'+esc(ev.filename)+'</b> · '+esc(ev.step));
+  }
+  if (ev.event === 'file_done') {
+    setBar(ev.index, ev.total);
+    const c = ev.entities.counts || {};
+    log('<span class="tag ok">готово</span> <b>'+esc(ev.filename)+'</b> → треб. '+c.requirements+', изд. '+c.products+', влож. '+c.attachments+(c.stubs? ', stub '+c.stubs:''));
+    mergeReqs(ev.entities.requirements || [], true);
+    currentDoc = ev.document_id;
+    if (ev.entities.counts) {
+      // live bump after each file via overview later
+    }
+  }
+  if (ev.event === 'file_error') {
+    log('<span class="tag err">сбой</span> <b>'+esc(ev.filename)+'</b> — '+esc(ev.error));
+  }
+  if (ev.event === 'linking') {
+    $('msg').textContent = ev.step;
+    log('<span class="tag run">связи</span> '+esc(ev.step));
+  }
+  if (ev.event === 'done') {
+    setBar(1,1);
+    $('msg').textContent = 'готово: '+ (ev.documents||[]).length + ' док.';
+    if (ev.totals) renderStats(ev.totals);
+    log('<span class="tag ok">пакет закрыт</span> в базе треб. '+(ev.totals&&ev.totals.requirements));
+    if (ev.documents && ev.documents[0]) currentDoc = ev.documents[0].id;
+  }
+}
+
+$('matrix').onclick = async () => {
+  $('msg').textContent = 'матрица…';
+  try {
+    const res = await j('/pipelines/review-correctness', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({document_id: currentDoc}),
+    });
+    $('msg').innerHTML = (res.result||'готово')+' · <a href="'+(res.download||'#')+'" style="color:#3d9cf0">скачать</a>';
+  } catch(e) { $('msg').textContent = e.message; }
+};
 $('unittests').onclick = async () => {
   $('msg').textContent = 'тесты…';
   try {
     const res = await j('/pipelines/unit-tests', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({ document_id: currentDoc }),
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({document_id: currentDoc}),
     });
-    const links = (res.files||[]).map(f => '<a href="'+f.download+'" style="color:#3d9cf0">'+f.requirement+'</a>').join(' · ');
-    $('msg').innerHTML = (res.count||0)+' файлов. Код: '+(res.code_attached?'есть':'не приложен')+'<br>'+links;
+    const links = (res.files||[]).map(f => '<a href="'+f.download+'" style="color:#3d9cf0">'+esc(f.requirement)+'</a>').join(' · ');
+    $('msg').innerHTML = (res.count||0)+' xlsx<br>'+links;
   } catch(e) { $('msg').textContent = e.message; }
 };
-$('matrix').onclick = async () => {
-  $('msg').textContent = 'матрица…';
-  try {
-    const body = { document_id: currentDoc };
-    const res = await j('/pipelines/review-correctness', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify(body),
-    });
-    $('msg').innerHTML = (res.result||'готово')+' · '+res.count+' тр. · <a href="'+(res.download||'#')+'" style="color:#3d9cf0">скачать docx</a>';
-  } catch(e) { $('msg').textContent = e.message; }
-};
-$('upload').onclick = async () => {
-  const fl = $('files').files;
-  if (!fl.length) { $('msg').textContent = 'выберите файлы'; return; }
-  const fd = new FormData();
-  for (const f of fl) fd.append('files', f);
-  $('msg').textContent = 'загрузка…';
-  try {
-    const res = await j('/documents/batch', {method:'POST', body: fd});
-    $('msg').textContent = 'готово: '+res.documents.length+' док.';
-    currentDoc = res.documents[0] && res.documents[0].id;
-    await selectDoc(currentDoc);
-  } catch(e) { $('msg').textContent = e.message; }
-};
-const drop = $('drop');
-drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over'); });
-drop.addEventListener('dragleave', () => drop.classList.remove('over'));
-drop.addEventListener('drop', e => {
-  e.preventDefault(); drop.classList.remove('over');
-  $('files').files = e.dataTransfer.files;
-});
 
-loadDocs().then(() => { if (docs[0]) selectDoc(docs[0].id); });
+j('/overview').then(ov => {
+  renderStats(ov.totals);
+  reqs = ov.recent_requirements || [];
+  renderReqs();
+}).catch(()=>{});
+loadDocs();
+renderQueue();
 </script>
 </body>
 </html>

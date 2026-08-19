@@ -34,6 +34,45 @@ async def upload_document(file: UploadFile = File(...), db: Session = Depends(ge
     return DocumentOut(id=doc.id, filename=doc.filename, kind=doc.kind.value, title=doc.title, status=doc.status)
 
 
+@router.get("/overview")
+def overview(db: Session = Depends(get_db)):
+    from specgraph.ingest.progress import db_totals
+
+    recent = (
+        db.query(Requirement)
+        .options(joinedload(Requirement.attributes))
+        .filter(Requirement.is_current.is_(True))
+        .order_by(Requirement.id.desc())
+        .limit(30)
+        .all()
+    )
+    return {
+        "totals": db_totals(db),
+        "recent_requirements": [_req_dump(r) for r in recent],
+    }
+
+
+@router.post("/index")
+async def index_stream(files: list[UploadFile] = File(...), db: Session = Depends(get_db)):
+    """Пакет файлов → поток NDJSON: файл за файлом и появившиеся сущности."""
+    import json
+
+    from specgraph.ingest.progress import iter_index
+
+    packed: list[tuple[Path, str]] = []
+    for file in files:
+        name = Path(file.filename or "upload.bin").name
+        tmp = settings.upload_dir / f"tmp_{uuid4().hex}_{name}"
+        tmp.write_bytes(await file.read())
+        packed.append((tmp, name))
+
+    def gen():
+        for ev in iter_index(db, packed):
+            yield json.dumps(ev, ensure_ascii=False) + "\n"
+
+    return StreamingResponse(gen(), media_type="application/x-ndjson")
+
+
 @router.post("/documents/batch")
 async def upload_batch(files: list[UploadFile] = File(...), db: Session = Depends(get_db)):
     packed: list[tuple[Path, str]] = []
