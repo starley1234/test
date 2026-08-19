@@ -69,7 +69,11 @@
     td, th { border-bottom: 1px solid var(--line); padding: 6px 4px; vertical-align: top; text-align: left; }
     .muted { color: var(--muted); }
     .rel { font-size: 12px; color: var(--muted); margin: 4px 0; }
-    input[type=search] { width: 100%; background: #12181f; color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+    input[type=search], select { width: 100%; background: #12181f; color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+    .chk { display: flex; gap: 8px; align-items: flex-start; padding: 6px 0; border-bottom: 1px solid #1e2630; }
+    .tok { display: flex; gap: 10px; flex-wrap: wrap; margin: 10px 0; }
+    .tok div { background: #12181f; padding: 10px 12px; border-radius: 8px; }
+    .tok b { font-size: 20px; display: block; }
     @keyframes pop { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
   </style>
 </head>
@@ -83,13 +87,10 @@
       <a href="#/" id="nav-index">Индекс</a>
       <a href="#/products" id="nav-products">Изделия</a>
       <a href="#/documents" id="nav-documents">Документы</a>
+      <a href="#/pipelines" id="nav-pipelines">Пайплайны</a>
     </nav>
     <div class="bar">
-      <button class="ghost" id="matrix">Матрица</button>
-      <button class="ghost" id="unittests">Тесты</button>
-      <button class="ghost" id="scheme">Схема</button>
       <button class="danger" id="wipeBtn">Очистить БД</button>
-      <input id="schemeFile" type="file" accept="image/*,.pdf" hidden />
     </div>
   </header>
 
@@ -150,7 +151,7 @@ function parseHash() {
 
 function setNav() {
   const p = parseHash().parts[0] || '';
-  ['index','products','documents'].forEach(k => {
+  ['index','products','documents','pipelines'].forEach(k => {
     const el = $('nav-'+k);
     if (el) el.classList.toggle('on', (k==='index' && !p) || p === k);
   });
@@ -310,6 +311,140 @@ async function renderReqPage(box, id) {
     <pre>${esc(r.text||'')}</pre>
     <h2>Вышестоящие</h2>${parents || '<div class="muted">нет</div>'}
     <h2>Атрибуты</h2><table>${attrs}</table>`;
+}
+
+async function renderPipelines(box) {
+  const list = await j('/pipelines');
+  box.innerHTML = `
+    <div class="crumbs"><a href="#/">Индекс</a> / Пайплайны</div>
+    <h3>Пайплайны</h3>
+    <p class="muted">индексация — отдельно на главной. Здесь прогоны с ходом и токенами.</p>
+    ${list.map(p => `
+      <div class="card">
+        <a href="#/pipelines/${p.name}">${esc(p.title)}</a>
+        <div class="muted">${esc(p.name)} · слот ${esc(p.slot||'—')}</div>
+      </div>`).join('')}`;
+}
+
+async function renderPipelinePage(box, name) {
+  const list = await j('/pipelines');
+  const meta = list.find(p => p.name === name) || {title: name, name};
+  const docs = await j('/documents');
+  const scheme = name === 'schematic-coverage';
+  box.innerHTML = `
+    <div class="crumbs"><a href="#/pipelines">Пайплайны</a> / ${esc(meta.title)}</div>
+    <h3>${esc(meta.title)}</h3>
+    <p class="muted">документ → галочки требований → запуск. Токены: чтение = prompt, запись = completion.</p>
+    <h2>Документ</h2>
+    <select id="pipeDoc">
+      <option value="">— выберите —</option>
+      ${docs.map(d => `<option value="${d.id}">${esc(d.title || d.filename)}</option>`).join('')}
+    </select>
+    ${scheme ? `<h2>Файл схемы</h2><input id="pipeFile" type="file" accept="image/*,.pdf" />` : ''}
+    <h2>Требования</h2>
+    <div class="bar" style="margin-bottom:8px">
+      <button class="ghost" type="button" id="pipeAll">все</button>
+      <button class="ghost" type="button" id="pipeNone">снять</button>
+    </div>
+    <div id="pipeReqs" class="muted">сначала документ</div>
+    <div style="margin:14px 0"><button id="pipeGo">Запустить</button></div>
+    <div class="tok">
+      <div><b id="tokP">0</b><span class="muted">чтение (prompt)</span></div>
+      <div><b id="tokC">0</b><span class="muted">запись (completion)</span></div>
+      <div><b id="tokT">0</b><span class="muted">всего</span></div>
+    </div>
+    <div class="progress"><i id="pipeBar"></i></div>
+    <div class="muted" id="pipeMsg">ожидание</div>
+    <h2>Ход</h2>
+    <div class="feed" id="pipeFeed"></div>
+    <div id="pipeOut"></div>`;
+
+  async function loadReqs() {
+    const id = $('pipeDoc').value;
+    if (!id) { $('pipeReqs').innerHTML = '<span class="muted">сначала документ</span>'; return; }
+    const rows = await j('/requirements?document_id='+id);
+    const usable = rows.filter(r => !(r.extra && (r.extra.stub || r.extra.appendix)));
+    $('pipeReqs').innerHTML = usable.map(r => `
+      <label class="chk">
+        <input type="checkbox" class="preq" value="${r.id}" checked />
+        <span><span class="code">${esc(r.code)}</span> ${esc((r.text||'').slice(0,140))}</span>
+      </label>`).join('') || '<div class="muted">в документе нет требований</div>';
+  }
+  $('pipeDoc').onchange = loadReqs;
+  $('pipeAll').onclick = () => document.querySelectorAll('.preq').forEach(c => c.checked = true);
+  $('pipeNone').onclick = () => document.querySelectorAll('.preq').forEach(c => c.checked = false);
+
+  $('pipeGo').onclick = async () => {
+    const docId = $('pipeDoc').value;
+    if (!docId) { $('pipeMsg').textContent = 'выберите документ'; return; }
+    const ids = [...document.querySelectorAll('.preq:checked')].map(c => +c.value);
+    if (!ids.length) { $('pipeMsg').textContent = 'отметьте требования'; return; }
+    $('pipeGo').disabled = true;
+    $('pipeFeed').innerHTML = '';
+    $('pipeOut').innerHTML = '';
+    $('pipeMsg').textContent = 'запуск…';
+    try {
+      let res;
+      if (scheme) {
+        const f = $('pipeFile') && $('pipeFile').files[0];
+        if (!f) throw new Error('нужен файл схемы');
+        const fd = new FormData();
+        fd.append('file', f);
+        fd.append('document_id', docId);
+        fd.append('requirement_ids', JSON.stringify(ids));
+        res = await fetch('/pipelines/runs/schematic-coverage', {method:'POST', body: fd});
+      } else {
+        res = await fetch('/pipelines/runs/'+name, {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({document_id: +docId, requirement_ids: ids}),
+        });
+      }
+      if (!res.ok) throw new Error(await res.text());
+      const started = await res.json();
+      const stream = await fetch('/pipelines/runs/'+started.run_id+'/stream');
+      const reader = stream.body.getReader();
+      const dec = new TextDecoder();
+      let buf = '';
+      while (true) {
+        const {value, done} = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, {stream:true});
+        const lines = buf.split('\n');
+        buf = lines.pop();
+        for (const line of lines) if (line.trim()) handlePipe(JSON.parse(line));
+      }
+      if (buf.trim()) handlePipe(JSON.parse(buf));
+    } catch (e) {
+      $('pipeMsg').textContent = e.message;
+    }
+    $('pipeGo').disabled = false;
+  };
+
+  function handlePipe(ev) {
+    const t = ev.tokens_total || {};
+    $('tokP').textContent = t.prompt ?? 0;
+    $('tokC').textContent = t.completion ?? 0;
+    $('tokT').textContent = t.total ?? 0;
+    if (ev.total && ev.index) $('pipeBar').style.width = Math.round(100*ev.index/ev.total) + '%';
+    if (ev.event === 'done') $('pipeBar').style.width = '100%';
+    const el = document.createElement('div');
+    el.className = 'ev';
+    const tag = ev.event === 'error' ? 'err' : ev.event === 'done' ? 'ok' : 'run';
+    const tok = ev.tokens && (ev.tokens.prompt || ev.tokens.completion)
+      ? ` · in ${ev.tokens.prompt||0} / out ${ev.tokens.completion||0}` : '';
+    el.innerHTML = `<span class="tag ${tag}">${esc(ev.event||'step')}</span> ${esc(ev.step||'')}${tok}`;
+    $('pipeFeed').prepend(el);
+    $('pipeMsg').textContent = ev.step || ev.event || '';
+    if (ev.event === 'done' && ev.result) {
+      const r = ev.result;
+      let extra = '';
+      if (r.download) extra += `<a href="${r.download}">скачать</a> `;
+      if (r.files) extra += r.files.map(f => `<a href="${f.download}">${esc(f.requirement)}</a>`).join(' · ');
+      if (r.output) extra += `<pre>${esc(String(r.output).slice(0,4000))}</pre>`;
+      if (r.result) extra += `<div>${esc(r.result)}</div>`;
+      $('pipeOut').innerHTML = extra;
+    }
+  }
 }
 
 function roleOf(name) {

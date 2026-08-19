@@ -9,6 +9,32 @@ from specgraph.config import settings
 Slot = Literal["cheap", "expensive"]
 
 
+def usage_from_message(msg) -> dict[str, int]:
+    """prompt = чтение (input), completion = запись (output)."""
+    prompt = completion = 0
+    meta = getattr(msg, "usage_metadata", None) or {}
+    if isinstance(meta, dict):
+        prompt = int(meta.get("input_tokens") or meta.get("prompt_tokens") or 0)
+        completion = int(meta.get("output_tokens") or meta.get("completion_tokens") or 0)
+    if not prompt and not completion:
+        rm = getattr(msg, "response_metadata", None) or {}
+        tu = rm.get("token_usage") or rm.get("usage") or {}
+        if isinstance(tu, dict):
+            prompt = int(tu.get("prompt_tokens") or tu.get("input_tokens") or 0)
+            completion = int(tu.get("completion_tokens") or tu.get("output_tokens") or 0)
+    return {"prompt": prompt, "completion": completion, "total": prompt + completion}
+
+
+def invoke_chat(slot: Slot, system: str, user: str) -> tuple[str, dict[str, int]]:
+    llm = chat_llm(slot)
+    if llm is None:
+        return "", {"prompt": 0, "completion": 0, "total": 0, "offline": True}
+    from langchain_core.messages import HumanMessage, SystemMessage
+
+    msg = llm.invoke([SystemMessage(content=system), HumanMessage(content=user)])
+    return (msg.content or ""), usage_from_message(msg)
+
+
 def chat_llm(slot: Slot = "cheap"):
     """LangChain ChatOpenAI или None, если нет ключа."""
     if slot == "expensive":
@@ -48,7 +74,18 @@ def vlm_chat(images: list[tuple[str, bytes]], prompt: str) -> str | None:
         timeout=180,
     )
     r.raise_for_status()
-    return r.json()["choices"][0]["message"]["content"]
+    data = r.json()
+    usage = data.get("usage") or {}
+    text = data["choices"][0]["message"]["content"]
+    vlm_chat.last_usage = {
+        "prompt": int(usage.get("prompt_tokens") or 0),
+        "completion": int(usage.get("completion_tokens") or 0),
+        "total": int(usage.get("total_tokens") or 0),
+    }
+    return text
+
+
+vlm_chat.last_usage = {"prompt": 0, "completion": 0, "total": 0}
 
 
 def model_info() -> dict:
@@ -59,6 +96,11 @@ def model_info() -> dict:
     return {
         "cheap": {"base_url": c_base, "model": c_model, "configured": bool(c_key)},
         "expensive": {"base_url": e_base, "model": e_model, "configured": bool(e_key)},
-        "embed": {"base_url": b_base or "(local sentence-transformers)", "model": b_model, "configured": bool(b_base or True)},
+        "embed": {
+            "base_url": b_base or "(local sentence-transformers)",
+            "model": b_model,
+            "dim": settings.embedding_dim,
+            "configured": bool(b_base or True),
+        },
         "vlm": {"base_url": v_base, "model": v_model, "configured": bool(v_key)},
     }

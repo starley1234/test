@@ -33,14 +33,25 @@ def _encode_remote(texts: list[str], base_url: str, api_key: str, model: str) ->
     return out
 
 
+def _fit_dim(vec: list[float]) -> list[float]:
+    dim = int(settings.embedding_dim or 0) or len(vec)
+    if len(vec) == dim:
+        return vec
+    if len(vec) > dim:
+        return vec[:dim]
+    return vec + [0.0] * (dim - len(vec))
+
+
 def encode(texts: list[str]) -> list[list[float]]:
     if not texts:
         return []
     base, key, model = settings.embed()
     if base:
-        return _encode_remote(texts, base, key, model)
-    vecs = _local_model().encode(texts, normalize_embeddings=True)
-    return [v.tolist() for v in np.asarray(vecs)]
+        raw = _encode_remote(texts, base, key, model)
+    else:
+        vecs = _local_model().encode(texts, normalize_embeddings=True)
+        raw = [v.tolist() for v in np.asarray(vecs)]
+    return [_fit_dim(v) for v in raw]
 
 
 def cosine(a: list[float], b: list[float]) -> float:

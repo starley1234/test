@@ -6,6 +6,7 @@ from sqlalchemy.orm import sessionmaker
 
 from specgraph.db import Base
 from specgraph.ingest.pipeline import ingest_parsed_json
+from specgraph.models import Requirement
 from specgraph.pipelines.correctness import load_checklist, run_correctness_matrix
 
 
@@ -40,6 +41,9 @@ def test_matrix_from_db_requirements(tmp_path, monkeypatch):
         },
         index=False,
     )
+    only = db.query(Requirement).filter_by(code="X.HRDW.FNCT.001/A").one()
+    one = run_correctness_matrix(db, requirement_ids=[only.id])
+    assert one["count"] == 1
     report = run_correctness_matrix(db)
     assert report["count"] == 2
     assert Path(report["output_file"]).is_file()

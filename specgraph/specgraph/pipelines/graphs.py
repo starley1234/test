@@ -11,12 +11,13 @@ from __future__ import annotations
 
 from typing import Any, TypedDict
 
-from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import END, START, StateGraph
 from sqlalchemy.orm import Session
 
-from specgraph.llm import chat_llm
+from specgraph.llm import invoke_chat
 from specgraph.retrieval.context import context_as_prompt, gather_context
+
+_CB: Any = None
 
 
 class PipelineState(TypedDict, total=False):
@@ -24,33 +25,41 @@ class PipelineState(TypedDict, total=False):
     product_id: int | None
     product_code: str | None
     document_id: int | None
+    requirement_id: int | None
     context: dict[str, Any]
     prompt: str
     draft: str
     result: dict[str, Any]
+    tokens: dict[str, int]
 
 
-def _llm(slot: str = "expensive"):
-    return chat_llm("expensive" if slot == "expensive" else "cheap")
+def _notify(_state: PipelineState, ev: dict[str, Any]) -> None:
+    if _CB:
+        _CB(ev)
 
 
 def _retrieve(state: PipelineState, db: Session) -> PipelineState:
+    _notify(state, {"event": "retrieve", "step": "чтение графа / контекста"})
     ctx = gather_context(
         db,
         query=state.get("query"),
         product_id=state.get("product_id"),
         product_code=state.get("product_code"),
         document_id=state.get("document_id"),
+        requirement_id=state.get("requirement_id") if "requirement_id" in state else None,
     )
     return {**state, "context": ctx, "prompt": context_as_prompt(ctx)}
 
 
 def _reason(system: str, state: PipelineState, *, slot: str = "expensive") -> PipelineState:
-    llm = _llm(slot)
-    if llm is None:
-        return {**state, "draft": _offline_draft(system, state)}
-    msg = llm.invoke([SystemMessage(content=system), HumanMessage(content=state.get("prompt") or "")])
-    return {**state, "draft": msg.content}
+    _notify(state, {"event": "llm", "step": f"запрос модели ({slot})"})
+    text, usage = invoke_chat(slot if slot in ("cheap", "expensive") else "expensive", system, state.get("prompt") or "")
+    if usage.get("offline") or not text:
+        draft = _offline_draft(system, state)
+        _notify(state, {"event": "llm_done", "step": "офлайн-эвристика", "tokens": usage, "mode": "heuristic"})
+        return {**state, "draft": draft, "tokens": usage}
+    _notify(state, {"event": "llm_done", "step": "ответ модели", "tokens": usage, "mode": "llm"})
+    return {**state, "draft": text, "tokens": usage}
 
 
 def _offline_draft(system: str, state: PipelineState) -> str:
@@ -139,7 +148,13 @@ def run_pipeline(name: str, db: Session, **kwargs) -> dict[str, Any]:
 
         return run_schematic_coverage(db, **kwargs)
     app = _compile(entry["system"], db, slot=entry.get("slot") or "expensive")
-    out = app.invoke({"query": kwargs.get("query") or entry.get("title") or name, **kwargs})
+    global _CB
+    payload = {k: v for k, v in kwargs.items() if k != "on_progress"}
+    _CB = kwargs.get("on_progress")
+    try:
+        out = app.invoke({"query": kwargs.get("query") or entry.get("title") or name, **payload})
+    finally:
+        _CB = None
     result = out["result"]
     result["pipeline"] = name
     result["slot"] = entry.get("slot")

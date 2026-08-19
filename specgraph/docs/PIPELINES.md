@@ -31,7 +31,9 @@ POST /pipelines/my-check
 Файлы методики и образца: `input/for_pipeline1/`.
 
 1. Загрузите спецификацию требований (`POST /documents` или пакет).
-2. `POST /pipelines/review-correctness` `{ "document_id": N }`
+2. Страница `#/pipelines/review-correctness`: документ + галочки требований.
+   Или `POST /pipelines/runs/review-correctness` `{ "document_id": N, "requirement_ids": [1,2] }`
+   и поток `GET /pipelines/runs/{id}/stream` (токены prompt/completion).
 3. Скачайте `download` — Word как `matrix.docx`: шапка, строки +/–/н/п, замечания.
 
 Критерии правятся в `pipelines/correctness_checklist.json` (снято с таблицы А.3).

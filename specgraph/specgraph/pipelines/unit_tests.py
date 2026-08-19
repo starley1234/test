@@ -17,7 +17,7 @@ from uuid import uuid4
 from sqlalchemy.orm import Session
 
 from specgraph.config import settings
-from specgraph.llm import chat_llm
+from specgraph.llm import invoke_chat
 from specgraph.models import Requirement
 from specgraph.retrieval.context import expand_requirement
 
@@ -111,11 +111,6 @@ def _heuristic_suite(req: Requirement) -> dict[str, Any]:
 
 
 def _llm_suite(req: Requirement, ctx: dict[str, Any]) -> dict[str, Any]:
-    llm = chat_llm("expensive")
-    if llm is None:
-        return _heuristic_suite(req)
-    from langchain_core.messages import HumanMessage, SystemMessage
-
     system = PROMPT.read_text(encoding="utf-8") if PROMPT.exists() else (
         "Инженер модульного тестирования МК. Верни только JSON."
     )
@@ -129,22 +124,26 @@ def _llm_suite(req: Requirement, ctx: dict[str, Any]) -> dict[str, Any]:
             "не меньше 5 кейсов, покрыть ветви и границы",
         ],
     }
-    msg = llm.invoke(
-        [
-            SystemMessage(content=system + "\nОтвет — один JSON-объект без markdown."),
-            HumanMessage(content=json.dumps(payload, ensure_ascii=False)[:8000]),
-        ]
+    raw, usage = invoke_chat(
+        "expensive",
+        system + "\nОтвет — один JSON-объект без markdown.",
+        json.dumps(payload, ensure_ascii=False)[:8000],
     )
-    raw = msg.content or "{}"
+    if usage.get("offline") or not raw:
+        h = _heuristic_suite(req)
+        h["tokens"] = usage
+        return h
     m = re.search(r"\{.*\}", raw, re.S)
     data = json.loads(m.group(0) if m else "{}")
     if not data.get("cases"):
         h = _heuristic_suite(req)
         h["mode"] = "llm-fallback"
+        h["tokens"] = usage
         return h
     data.setdefault("func", _guess_func(req))
     data.setdefault("danger", "Низкая")
     data["mode"] = "llm"
+    data["tokens"] = usage
     return data
 
 
@@ -248,13 +247,18 @@ def run_unit_tests(
     *,
     document_id: int | None = None,
     requirement_id: int | None = None,
+    requirement_ids: list[int] | None = None,
     query: str | None = None,
     source_code: str | None = None,
+    on_progress: Any = None,
     **_: Any,
 ) -> dict[str, Any]:
     q = db.query(Requirement).filter(Requirement.is_current.is_(True))
+    ids = list(requirement_ids or [])
     if requirement_id:
-        q = q.filter(Requirement.id == requirement_id)
+        ids.append(requirement_id)
+    if ids:
+        q = q.filter(Requirement.id.in_(ids))
     elif document_id:
         q = q.filter(Requirement.document_id == document_id)
     reqs = [r for r in q.all() if not (r.extra or {}).get("stub") and not (r.extra or {}).get("appendix")]
@@ -266,7 +270,12 @@ def run_unit_tests(
 
     EXPORTS.mkdir(parents=True, exist_ok=True)
     files = []
-    for req in reqs:
+    n = len(reqs)
+    if on_progress:
+        on_progress({"event": "plan", "step": f"тесты для {n} требований", "total": n})
+    for i, req in enumerate(reqs, 1):
+        if on_progress:
+            on_progress({"event": "item", "step": f"генерация {req.code}", "index": i, "total": n, "code": req.code})
         ctx = expand_requirement(db, req.id)
         suite = _llm_suite(req, ctx)
         sim = simulate(suite, source_code)
@@ -285,4 +294,16 @@ def run_unit_tests(
                 "mode": suite.get("mode"),
             }
         )
+        if on_progress:
+            on_progress(
+                {
+                    "event": "item_done",
+                    "step": f"{req.code} → {fname}",
+                    "index": i,
+                    "total": n,
+                    "code": req.code,
+                    "tokens": suite.get("tokens") or {},
+                    "mode": suite.get("mode"),
+                }
+            )
     return {"count": len(files), "files": files, "code_attached": bool(source_code and source_code.strip())}

@@ -96,10 +96,17 @@ def _req_blob(r: Requirement) -> str:
     return f"{r.code} {r.title or ''} {r.text or ''} {attrs}".lower()
 
 
-def cover(scheme: dict[str, Any], db: Session, document_id: int | None) -> dict[str, Any]:
+def cover(
+    scheme: dict[str, Any],
+    db: Session,
+    document_id: int | None,
+    requirement_ids: list[int] | None = None,
+) -> dict[str, Any]:
     q = db.query(Requirement).filter(Requirement.is_current.is_(True))
     if document_id:
         q = q.filter(Requirement.document_id == document_id)
+    if requirement_ids:
+        q = q.filter(Requirement.id.in_(requirement_ids))
     reqs = [r for r in q.all() if not (r.extra or {}).get("stub") and not (r.extra or {}).get("appendix")]
     blobs = [(r, _req_blob(r)) for r in reqs]
     rows = []
@@ -162,11 +169,22 @@ def run_schematic_coverage(
     filename: str,
     *,
     document_id: int | None = None,
+    requirement_ids: list[int] | None = None,
+    on_progress: Any = None,
     **_: Any,
 ) -> dict[str, Any]:
+    if on_progress:
+        on_progress({"event": "read", "step": f"чтение {filename}"})
     pages = load_pages(path)
+    if on_progress:
+        on_progress({"event": "vlm", "step": "VLM: разбор схемы"})
     scheme = analyze_scheme(pages, db, document_id)
-    cov = cover(scheme, db, document_id)
+    usage = getattr(vlm_chat, "last_usage", None) or {}
+    if on_progress:
+        on_progress({"event": "vlm_done", "step": f"режим {scheme.get('mode')}", "tokens": usage})
+    if on_progress:
+        on_progress({"event": "cover", "step": "сопоставление с требованиями"})
+    cov = cover(scheme, db, document_id, requirement_ids=requirement_ids)
     EXPORTS.mkdir(parents=True, exist_ok=True)
     out = EXPORTS / f"scheme_coverage_{uuid4().hex[:6]}.md"
     write_report(scheme, cov, out)
@@ -178,4 +196,5 @@ def run_schematic_coverage(
         "coverage": cov,
         "output_file": str(out),
         "download": f"/exports/{out.name}",
+        "tokens": usage,
     }

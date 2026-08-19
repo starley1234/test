@@ -12,7 +12,7 @@ from uuid import uuid4
 from sqlalchemy.orm import Session, joinedload
 
 from specgraph.config import settings
-from specgraph.llm import chat_llm
+from specgraph.llm import invoke_chat
 from specgraph.models import Requirement
 from specgraph.retrieval.context import expand_requirement
 
@@ -25,7 +25,12 @@ def load_checklist() -> dict[str, Any]:
     return json.loads(CHECKLIST.read_text(encoding="utf-8"))
 
 
-def _current_requirements(db: Session, document_id: int | None, product_id: int | None) -> list[Requirement]:
+def _current_requirements(
+    db: Session,
+    document_id: int | None,
+    product_id: int | None,
+    requirement_ids: list[int] | None = None,
+) -> list[Requirement]:
     q = (
         db.query(Requirement)
         .options(joinedload(Requirement.attributes))
@@ -35,6 +40,8 @@ def _current_requirements(db: Session, document_id: int | None, product_id: int 
         q = q.filter(Requirement.document_id == document_id)
     if product_id:
         q = q.filter(Requirement.product_id == product_id)
+    if requirement_ids:
+        q = q.filter(Requirement.id.in_(requirement_ids))
     rows = [r for r in q.all() if not (r.extra or {}).get("stub") and not (r.extra or {}).get("appendix")]
     return rows
 
@@ -73,11 +80,6 @@ def _heuristic_row(req: Requirement, checklist: dict) -> dict[str, Any]:
 
 
 def _llm_row(req: Requirement, checklist: dict, ctx: dict) -> dict[str, Any]:
-    llm = chat_llm("expensive")
-    if llm is None:
-        return _heuristic_row(req, checklist)
-    from langchain_core.messages import HumanMessage, SystemMessage
-
     crit_txt = "\n".join(
         f"- {c['name']}: " + " ".join(c["questions"][:3]) for c in checklist["criteria"]
     )
@@ -88,19 +90,17 @@ def _llm_row(req: Requirement, checklist: dict, ctx: dict) -> dict[str, Any]:
         f"Требование {req.code}\nТекст: {req.text}\n"
         f"Атрибуты: {attrs}\nВышестоящие:\n{parent_txt or 'нет'}\n\n"
         f"Критерии (группа = одна оценка):\n{crit_txt}\n\n"
-        "Верни JSON: {\"marks\": {\"Идентифицируемость\": \"+\"|\"–\"|\"н/п\", ...}, "
-        "\"note\": \"Несоответствий не обнаружено\" или краткое замечание}. "
-        "Только JSON."
+        "Верни JSON с marks (+/–/н/п) и note. Только JSON."
     )
-    msg = llm.invoke(
-        [
-            SystemMessage(
-                content="Ты член группы валидации. Оцени требование по методике рассмотрения корректности. Не выдумывай факты вне карточки."
-            ),
-            HumanMessage(content=prompt),
-        ]
+    raw, usage = invoke_chat(
+        "expensive",
+        "Ты член группы валидации. Оцени требование по методике рассмотрения корректности. Не выдумывай факты вне карточки.",
+        prompt,
     )
-    raw = msg.content or "{}"
+    if usage.get("offline") or not raw:
+        row = _heuristic_row(req, checklist)
+        row["tokens"] = usage
+        return row
     m = re.search(r"\{.*\}", raw, re.S)
     data = json.loads(m.group(0) if m else "{}")
     marks = {}
@@ -108,16 +108,41 @@ def _llm_row(req: Requirement, checklist: dict, ctx: dict) -> dict[str, Any]:
         marks[c["name"]] = str((data.get("marks") or {}).get(c["name"]) or "н/п")[:3]
     note = data.get("note") or "Несоответствий не обнаружено"
     ok = all(v == "+" for v in marks.values())
-    return {"code": req.code, "marks": marks, "note": note, "pass": ok, "mode": "llm"}
+    return {"code": req.code, "marks": marks, "note": note, "pass": ok, "mode": "llm", "tokens": usage}
 
 
-def evaluate(db: Session, *, document_id: int | None = None, product_id: int | None = None) -> dict[str, Any]:
+def evaluate(
+    db: Session,
+    *,
+    document_id: int | None = None,
+    product_id: int | None = None,
+    requirement_ids: list[int] | None = None,
+    on_progress: Any = None,
+) -> dict[str, Any]:
     checklist = load_checklist()
-    reqs = _current_requirements(db, document_id, product_id)
+    reqs = _current_requirements(db, document_id, product_id, requirement_ids)
     rows = []
-    for r in reqs:
+    n = len(reqs)
+    if on_progress:
+        on_progress({"event": "plan", "step": f"к оценке {n} требований", "total": n})
+    for i, r in enumerate(reqs, 1):
+        if on_progress:
+            on_progress({"event": "item", "step": f"оценка {r.code}", "index": i, "total": n, "code": r.code})
         ctx = expand_requirement(db, r.id)
-        rows.append(_llm_row(r, checklist, ctx))
+        row = _llm_row(r, checklist, ctx)
+        rows.append(row)
+        if on_progress:
+            on_progress(
+                {
+                    "event": "item_done",
+                    "step": f"{r.code}: {(row.get('note') or '')[:80]}",
+                    "index": i,
+                    "total": n,
+                    "code": r.code,
+                    "tokens": row.get("tokens") or {},
+                    "mode": row.get("mode"),
+                }
+            )
     passed = all(x["pass"] for x in rows) if rows else False
     return {
         "checklist": checklist["title"],
@@ -133,9 +158,10 @@ def write_matrix_docx(
     out_path: Path | None = None,
     designations: dict[str, str] | None = None,
 ) -> Path:
+    from copy import deepcopy
+
     from docx import Document
     from docx.oxml.ns import qn
-    from copy import deepcopy
 
     EXPORTS.mkdir(parents=True, exist_ok=True)
     out_path = out_path or EXPORTS / f"matrix_correctness_{date.today().isoformat()}_{uuid4().hex[:6]}.docx"
@@ -170,7 +196,6 @@ def write_matrix_docx(
     else:
         tbl = doc.tables[1]
 
-    # wipe body rows, keep header
     tbl_el = tbl._tbl
     for tr in list(tbl_el.findall(qn("w:tr")))[1:]:
         tbl_el.remove(tr)
@@ -190,9 +215,6 @@ def write_matrix_docx(
                 texts[0].text = val
                 for extra in texts[1:]:
                     extra.text = ""
-            else:
-                # last resort
-                pass
         tbl_el.append(new_tr)
 
     for row in report["rows"]:
@@ -211,10 +233,20 @@ def run_correctness_matrix(
     *,
     document_id: int | None = None,
     product_id: int | None = None,
+    requirement_ids: list[int] | None = None,
     designations: dict[str, str] | None = None,
+    on_progress: Any = None,
     **_: Any,
 ) -> dict[str, Any]:
-    report = evaluate(db, document_id=document_id, product_id=product_id)
+    report = evaluate(
+        db,
+        document_id=document_id,
+        product_id=product_id,
+        requirement_ids=requirement_ids,
+        on_progress=on_progress,
+    )
+    if on_progress:
+        on_progress({"event": "write", "step": "запись matrix.docx"})
     path = write_matrix_docx(report, designations=designations)
     report["output_file"] = str(path)
     report["download"] = f"/exports/{path.name}"

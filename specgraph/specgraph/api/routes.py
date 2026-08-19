@@ -120,13 +120,20 @@ def get_document(doc_id: int, db: Session = Depends(get_db)):
     n_r = db.query(Requirement).filter(Requirement.document_id == doc_id).count()
     n_i = db.query(Illustration).filter(Illustration.document_id == doc_id).count()
     n_a = db.query(Attachment).filter(Attachment.document_id == doc_id).count()
+    products = (
+        db.query(Product).filter(Product.document_id == doc_id).order_by(Product.level, Product.id).all()
+    )
     return {
         "id": d.id,
         "filename": d.filename,
+        "kind": d.kind.value if d.kind else None,
         "title": d.title,
         "status": d.status,
         "parse_meta": d.parse_meta,
         "counts": {"products": n_p, "requirements": n_r, "illustrations": n_i, "attachments": n_a},
+        "products": [
+            {"id": p.id, "code": p.code, "name": p.name, "level": p.level, "parent_id": p.parent_id} for p in products
+        ],
     }
 
 
@@ -304,11 +311,96 @@ def pipeline_summarize(body: PipelineRequest, db: Session = Depends(get_db)):
     return summarize_context(db, **body.model_dump())
 
 
+@router.get("/pipelines")
+def list_pipelines():
+    from specgraph.pipelines.graphs import _catalog
+
+    cat = _catalog()
+    out = []
+    for name, e in cat.items():
+        if name.startswith("_"):
+            continue
+        out.append({"name": name, "title": e.get("title") or name, "slot": e.get("slot"), "kind": e.get("kind")})
+    return out
+
+
+@router.post("/pipelines/runs/{name}")
+def start_named_run(name: str, body: PipelineRequest):
+    from specgraph.pipelines.graphs import _catalog
+    from specgraph.pipelines.jobs import start_job
+
+    if name.startswith("_") or name not in _catalog():
+        raise HTTPException(404, f"unknown pipeline: {name}")
+    job = start_job(name, body.model_dump())
+    return {"run_id": job.id, "name": name}
+
+
+@router.post("/pipelines/runs/schematic-coverage")
+async def start_schematic_run(
+    file: UploadFile = File(...),
+    document_id: int | None = None,
+    requirement_ids: str | None = None,
+):
+    from specgraph.pipelines.jobs import start_job
+
+    fname = Path(file.filename or "scheme.bin").name
+    tmp = settings.upload_dir / f"scheme_{uuid4().hex}_{fname}"
+    tmp.write_bytes(await file.read())
+    ids = None
+    if requirement_ids:
+        import json
+
+        ids = json.loads(requirement_ids)
+    job = start_job(
+        "schematic-coverage",
+        {"document_id": document_id, "requirement_ids": ids},
+        scheme_path=tmp,
+        scheme_name=fname,
+    )
+    return {"run_id": job.id, "name": "schematic-coverage"}
+
+
+@router.post("/pipelines/runs/{name}")
+def start_named_run(name: str, body: PipelineRequest):
+    from specgraph.pipelines.graphs import _catalog
+    from specgraph.pipelines.jobs import start_job
+
+    if name.startswith("_") or name not in _catalog():
+        raise HTTPException(404, f"unknown pipeline: {name}")
+    job = start_job(name, body.model_dump())
+    return {"run_id": job.id, "name": name}
+
+
+@router.get("/pipelines/runs/{run_id}")
+def get_run(run_id: str):
+    from specgraph.pipelines.jobs import get_job
+
+    job = get_job(run_id)
+    if not job:
+        raise HTTPException(404)
+    return job.snapshot()
+
+
+@router.get("/pipelines/runs/{run_id}/stream")
+def stream_run(run_id: str):
+    from specgraph.pipelines.jobs import get_job, ndjson
+
+    job = get_job(run_id)
+    if not job:
+        raise HTTPException(404)
+    return StreamingResponse(ndjson(job), media_type="application/x-ndjson")
+
+
 @router.post("/pipelines/review-correctness")
 def pipeline_correctness(body: PipelineRequest, db: Session = Depends(get_db)):
     from specgraph.pipelines.correctness import run_correctness_matrix
 
-    return run_correctness_matrix(db, document_id=body.document_id, product_id=body.product_id)
+    return run_correctness_matrix(
+        db,
+        document_id=body.document_id,
+        product_id=body.product_id,
+        requirement_ids=body.requirement_ids,
+    )
 
 
 @router.post("/pipelines/unit-tests")
@@ -319,6 +411,7 @@ def pipeline_unit_tests(body: PipelineRequest, db: Session = Depends(get_db)):
         db,
         document_id=body.document_id,
         requirement_id=body.requirement_id,
+        requirement_ids=body.requirement_ids,
         query=body.query,
         source_code=body.source_code,
     )
