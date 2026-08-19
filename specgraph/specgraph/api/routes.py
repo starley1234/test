@@ -26,7 +26,17 @@ def _need_pipe(name: str, user: User | None) -> None:
 
 @router.get("/", response_class=HTMLResponse)
 def ui():
+    """Классический UI (не ломаем). Конструктор — GET /app."""
     return (STATIC / "index.html").read_text(encoding="utf-8")
+
+
+@router.get("/app", response_class=HTMLResponse)
+def ui_constructor():
+    """Альтернативный конструктор: загрузить → кнопка → результат."""
+    path = STATIC / "app.html"
+    if not path.is_file():
+        raise HTTPException(404, "constructor UI missing")
+    return path.read_text(encoding="utf-8")
 
 
 @router.post("/documents", response_model=DocumentOut)
@@ -419,7 +429,7 @@ def pipeline_blueprint(name: str):
 
 
 @router.post("/mcp")
-def mcp_rpc(body: dict = None):
+def mcp_rpc(body: dict = Body(...)):
     from specgraph.mcp_server import handle_rpc
 
     return handle_rpc(body)

@@ -1,3 +1,8 @@
+"""Точка входа FastAPI.
+
+UI: GET / — полный интерфейс, GET /app — конструктор.
+БД поднимается в lifespan → init_db().
+"""
 import logging
 from contextlib import asynccontextmanager
 

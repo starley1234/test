@@ -1,5 +1,13 @@
 # SpecGraph
 
+Два интерфейса, один API:
+
+- **http://localhost:8000/app** — конструктор (загрузить → кнопка → скачать Excel/Markdown)
+- **http://localhost:8000/** — полный UI для разбора графа
+
+Архитектура: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+
 Модульный монолит для загрузки Word-спецификаций (обычный `.docx` и документы со скриптами/макросами), извлечения связанных сущностей и выдачи контекста LLM-пайплайнам.
 
 ## Зачем
@@ -50,7 +58,7 @@ uvicorn specgraph.main:app --reload --host 0.0.0.0 --port 8000
 
 Если в `.env` прописан Postgres, а контейнер не запущен, сервис **сам перейдёт на SQLite** и напишет предупреждение. Postgres: `docker compose up -d db`.
 
-UI: `http://localhost:8000/` · API: `http://localhost:8000/docs`
+UI конструктор: `http://localhost:8000/app` · полный UI: `http://localhost:8000/` · API: `http://localhost:8000/docs`
 
 Пакет файлов (спецификация + приложения `.docx`/`.xlsx`): `POST /documents/batch`
 
