@@ -140,6 +140,7 @@ class Requirement(Base):
     base_code: Mapped[str] = mapped_column(String(256), index=True, default="")
     revision: Mapped[str | None] = mapped_column(String(32), nullable=True)
     is_current: Mapped[bool] = mapped_column(default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
 
     document: Mapped[Document] = relationship(back_populates="requirements")
     product: Mapped[Product | None] = relationship(back_populates="requirements")
@@ -262,6 +263,20 @@ class UserToken(Base):
     token: Mapped[str] = mapped_column(String(64), unique=True)
     created: Mapped[int] = mapped_column(Integer)
     expires: Mapped[int] = mapped_column(Integer)
+
+
+class IndexBatch(Base):
+    """Один пакет индексации (история)."""
+
+    __tablename__ = "index_batches"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+    uploaded_by_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    files: Mapped[dict[str, Any]] = mapped_column(JSON, default=list)
+    totals: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    document_ids: Mapped[list[int]] = mapped_column(JSON, default=list)
+    status: Mapped[str] = mapped_column(String(32), default="done")
 
 
 class Embedding(Base):

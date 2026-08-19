@@ -250,4 +250,16 @@ def run_correctness_matrix(
     path = write_matrix_docx(report, designations=designations)
     report["output_file"] = str(path)
     report["download"] = f"/exports/{path.name}"
+    from specgraph.pipelines.exports import write_text_bundle
+
+    md_lines = [report.get("result") or "", ""]
+    for row in report.get("rows") or []:
+        md_lines.append(f"- {row.get('code')}: {row.get('note')}")
+    extra = write_text_bundle(
+        "review-correctness",
+        {"output": "\n".join(md_lines), "rows": report.get("rows"), "count": report.get("count")},
+        title=report.get("checklist") or "корректность",
+    )
+    extra["docx"] = report["download"]
+    report["downloads"] = extra
     return report

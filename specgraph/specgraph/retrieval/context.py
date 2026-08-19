@@ -47,6 +47,7 @@ def _req_dump(r: Requirement) -> dict[str, Any]:
         "product_id": r.product_id,
         "parent_id": r.parent_id,
         "section_path": r.section_path,
+        "created_at": r.created_at.isoformat() if getattr(r, "created_at", None) else None,
         "attributes": {a.key: a.value for a in r.attributes},
     }
 
@@ -244,7 +245,8 @@ def context_as_prompt(bundle: dict[str, Any]) -> str:
         for r in reqs:
             attrs = r.get("attributes") or {}
             attr_s = "; ".join(f"{k}={str(v)[:120]}" for k, v in list(attrs.items())[:8])
-            parts.append(f"- [{r.get('code')}] ({r.get('kind')}) {(r.get('text') or '')[:500]}")
+            when = (r.get("created_at") or "")[:19]
+            parts.append(f"- [{r.get('code')}] ({r.get('kind')}) загружено {when} {(r.get('text') or '')[:500]}")
             if attr_s:
                 parts.append(f"  атрибуты: {attr_s}")
     seed = bundle.get("seed_requirement") or {}

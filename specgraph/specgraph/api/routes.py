@@ -43,6 +43,25 @@ async def upload_document(
     return DocumentOut(id=doc.id, filename=doc.filename, kind=doc.kind.value, title=doc.title, status=doc.status)
 
 
+@router.get("/index/history")
+def index_history(db: Session = Depends(get_db)):
+    from specgraph.models import IndexBatch
+
+    rows = db.query(IndexBatch).order_by(IndexBatch.id.desc()).limit(80).all()
+    return [
+        {
+            "id": b.id,
+            "created_at": b.created_at.isoformat() if b.created_at else None,
+            "uploaded_by_id": b.uploaded_by_id,
+            "files": b.files,
+            "totals": b.totals,
+            "document_ids": b.document_ids,
+            "status": b.status,
+        }
+        for b in rows
+    ]
+
+
 @router.post("/db/wipe")
 def wipe_database(_: User = Depends(require_admin)):
     wipe_db()
@@ -248,6 +267,7 @@ def _req_dump(r: Requirement) -> dict:
         "base_code": r.base_code,
         "revision": r.revision,
         "is_current": r.is_current,
+        "created_at": r.created_at.isoformat() if getattr(r, "created_at", None) else None,
         "attributes": {a.key: a.value for a in r.attributes},
     }
 

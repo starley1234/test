@@ -105,10 +105,16 @@ def _slim(result: dict[str, Any]) -> dict[str, Any]:
 
 def _dispatch(name: str, db, kwargs: dict[str, Any], job: Job, scheme_path: Path | None, scheme_name: str | None) -> dict[str, Any]:
     on = _progress(job)
-    if name == "review-correctness":
+    if name in {"review-correctness", "review-one"}:
         from specgraph.pipelines.correctness import run_correctness_matrix
 
-        return run_correctness_matrix(db, on_progress=on, **kwargs)
+        kw = dict(kwargs)
+        if name == "review-one":
+            ids = list(kw.get("requirement_ids") or [])
+            if kw.get("requirement_id"):
+                ids = [kw["requirement_id"]]
+            kw["requirement_ids"] = ids[:1]
+        return run_correctness_matrix(db, on_progress=on, **kw)
     if name == "unit-tests":
         from specgraph.pipelines.unit_tests import run_unit_tests
 

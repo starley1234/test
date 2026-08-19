@@ -81,7 +81,7 @@ def iter_index(
             "step": "читаем файл и ищем карточки" if role == "spec" else "читаем вложение",
         }
         try:
-            doc = ingest_file(db, path, name, index=False)
+            doc = ingest_file(db, path, name, index=False, uploaded_by_id=uploaded_by_id)
             docs.append(doc)
             snap = _snap_doc(db, doc.id)
             yield {
@@ -109,14 +109,21 @@ def iter_index(
     for att in db.query(Attachment).all():
         bind_attachment_to_requirements(db, att)
     resolve_pending(db)
+    totals = db_totals(db)
+    from specgraph.models import IndexBatch
+
+    batch = IndexBatch(
+        uploaded_by_id=uploaded_by_id,
+        files=planned,
+        totals=totals,
+        document_ids=[d.id for d in docs],
+        status="done",
+    )
+    db.add(batch)
     db.commit()
     yield {
         "event": "done",
+        "batch_id": batch.id,
         "documents": [{"id": d.id, "filename": d.filename, "title": d.title} for d in docs],
-        "totals": {
-            "documents": db.query(Document).count(),
-            "requirements": db.query(Requirement).filter(Requirement.is_current.is_(True)).count(),
-            "products": db.query(Product).count(),
-            "attachments": db.query(Attachment).count(),
-        },
+        "totals": totals,
     }

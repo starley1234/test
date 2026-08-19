@@ -88,7 +88,10 @@ def _migrate_columns() -> None:
         cols = {r[1] for r in conn.execute(text("PRAGMA table_info(documents)"))}
         if cols and "uploaded_by_id" not in cols:
             conn.execute(text("ALTER TABLE documents ADD COLUMN uploaded_by_id INTEGER"))
-            conn.commit()
+        rcols = {r[1] for r in conn.execute(text("PRAGMA table_info(requirements)"))}
+        if rcols and "created_at" not in rcols:
+            conn.execute(text("ALTER TABLE requirements ADD COLUMN created_at DATETIME"))
+        conn.commit()
 
 
 def wipe_db() -> None:
