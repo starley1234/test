@@ -15,7 +15,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import END, START, StateGraph
 from sqlalchemy.orm import Session
 
-from specgraph.config import settings
+from specgraph.llm import chat_llm
 from specgraph.retrieval.context import context_as_prompt, gather_context
 
 
@@ -30,12 +30,8 @@ class PipelineState(TypedDict, total=False):
     result: dict[str, Any]
 
 
-def _llm():
-    if not settings.openai_api_key:
-        return None
-    from langchain_openai import ChatOpenAI
-
-    return ChatOpenAI(model=settings.openai_model, api_key=settings.openai_api_key, temperature=0.1)
+def _llm(slot: str = "expensive"):
+    return chat_llm("expensive" if slot == "expensive" else "cheap")
 
 
 def _retrieve(state: PipelineState, db: Session) -> PipelineState:
@@ -49,8 +45,8 @@ def _retrieve(state: PipelineState, db: Session) -> PipelineState:
     return {**state, "context": ctx, "prompt": context_as_prompt(ctx)}
 
 
-def _reason(system: str, state: PipelineState) -> PipelineState:
-    llm = _llm()
+def _reason(system: str, state: PipelineState, *, slot: str = "expensive") -> PipelineState:
+    llm = _llm(slot)
     if llm is None:
         return {**state, "draft": _offline_draft(system, state)}
     msg = llm.invoke([SystemMessage(content=system), HumanMessage(content=state.get("prompt") or "")])
@@ -99,14 +95,14 @@ def _pack(state: PipelineState) -> PipelineState:
     }
 
 
-def _compile(system: str, db: Session):
+def _compile(system: str, db: Session, *, slot: str = "expensive"):
     g = StateGraph(PipelineState)
 
     def retrieve(s: PipelineState) -> PipelineState:
         return _retrieve(s, db)
 
     def reason(s: PipelineState) -> PipelineState:
-        return _reason(system, s)
+        return _reason(system, s, slot=slot)
 
     g.add_node("retrieve", retrieve)
     g.add_node("reason", reason)
@@ -131,12 +127,21 @@ TESTS_SYS = (
 
 
 def validate_requirements(db: Session, **kwargs) -> dict[str, Any]:
-    app = _compile(VALIDATE_SYS, db)
+    app = _compile(VALIDATE_SYS, db, slot="expensive")
     out = app.invoke({"query": kwargs.get("query") or "проверь требования", **kwargs})
     return out["result"]
 
 
 def generate_tests(db: Session, **kwargs) -> dict[str, Any]:
-    app = _compile(TESTS_SYS, db)
+    app = _compile(TESTS_SYS, db, slot="expensive")
     out = app.invoke({"query": kwargs.get("query") or "сгенерируй тесты", **kwargs})
+    return out["result"]
+
+
+SUM_SYS = "Суммируй связанные требования и атрибуты изделия кратко, по пунктам, без выдумок."
+
+
+def summarize_context(db: Session, **kwargs) -> dict[str, Any]:
+    app = _compile(SUM_SYS, db, slot="cheap")
+    out = app.invoke({"query": kwargs.get("query") or "кратко суммируй контекст", **kwargs})
     return out["result"]

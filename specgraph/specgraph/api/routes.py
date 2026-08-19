@@ -192,9 +192,20 @@ def retrieval_context(body: RetrievalRequest, db: Session = Depends(get_db)):
 
 @router.post("/pipelines/validate-requirements")
 def pipeline_validate(body: PipelineRequest, db: Session = Depends(get_db)):
+    from specgraph.pipelines.graphs import validate_requirements
+
     return validate_requirements(db, **body.model_dump())
 
 
 @router.post("/pipelines/generate-tests")
 def pipeline_tests(body: PipelineRequest, db: Session = Depends(get_db)):
+    from specgraph.pipelines.graphs import generate_tests
+
     return generate_tests(db, **body.model_dump())
+
+
+@router.post("/pipelines/summarize")
+def pipeline_summarize(body: PipelineRequest, db: Session = Depends(get_db)):
+    from specgraph.pipelines.graphs import summarize_context
+
+    return summarize_context(db, **body.model_dump())

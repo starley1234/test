@@ -10,16 +10,36 @@ from specgraph.models import Embedding, EntityType, Illustration, Product, Requi
 
 
 @lru_cache(maxsize=1)
-def _model():
+def _local_model():
     from sentence_transformers import SentenceTransformer
 
-    return SentenceTransformer(settings.embedding_model)
+    _, _, model = settings.embed()
+    return SentenceTransformer(model)
+
+
+def _encode_remote(texts: list[str], base_url: str, api_key: str, model: str) -> list[list[float]]:
+    import httpx
+
+    url = base_url.rstrip("/") + "/embeddings"
+    headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
+    r = httpx.post(url, json={"model": model, "input": texts}, headers=headers, timeout=120)
+    r.raise_for_status()
+    data = sorted(r.json()["data"], key=lambda x: x.get("index", 0))
+    out = []
+    for row in data:
+        a = np.asarray(row["embedding"], dtype=float)
+        n = float(np.linalg.norm(a)) or 1.0
+        out.append((a / n).tolist())
+    return out
 
 
 def encode(texts: list[str]) -> list[list[float]]:
     if not texts:
         return []
-    vecs = _model().encode(texts, normalize_embeddings=True)
+    base, key, model = settings.embed()
+    if base:
+        return _encode_remote(texts, base, key, model)
+    vecs = _local_model().encode(texts, normalize_embeddings=True)
     return [v.tolist() for v in np.asarray(vecs)]
 
 
