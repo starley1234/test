@@ -1,7 +1,4 @@
-"""Фоновые прогоны: один Job на run_id, события NDJSON, счётчик токенов.
-
-Не шарим Session между потоками: воркер открывает SessionLocal() сам.
-"""
+"""Фоновые прогоны: RAM + таблица pipeline_runs. Своя Session в потоке."""
 
 from __future__ import annotations
 
@@ -13,6 +10,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
 from uuid import uuid4
+
+from specgraph.config import settings
 
 log = logging.getLogger("specgraph.jobs")
 
@@ -27,6 +26,7 @@ class Job:
     result: dict[str, Any] | None = None
     error: str | None = None
     user_id: int | None = None
+    mode: str | None = None
     lock: threading.Lock = field(default_factory=threading.Lock)
 
     def emit(self, ev: dict[str, Any]) -> None:
@@ -38,6 +38,7 @@ class Job:
                 self.tokens["total"] = self.tokens["prompt"] + self.tokens["completion"]
             ev = {**ev, "tokens_total": dict(self.tokens)}
             self.events.append(ev)
+        _persist(self)
 
     def snapshot(self) -> dict[str, Any]:
         with self.lock:
@@ -45,6 +46,7 @@ class Job:
                 "id": self.id,
                 "name": self.name,
                 "status": self.status,
+                "mode": self.mode,
                 "tokens": dict(self.tokens),
                 "events": list(self.events),
                 "result": self.result,
@@ -56,12 +58,71 @@ _JOBS: dict[str, Job] = {}
 _JOBS_LOCK = threading.Lock()
 
 
+def _running_count() -> int:
+    return sum(1 for j in _JOBS.values() if j.status in {"queued", "running"})
+
+
 def get_job(job_id: str) -> Job | None:
-    return _JOBS.get(job_id)
+    j = _JOBS.get(job_id)
+    if j:
+        return j
+    return _load_db(job_id)
 
 
-def _progress(job: Job) -> Callable[[dict[str, Any]], None]:
-    return job.emit
+def _persist(job: Job) -> None:
+    from specgraph.db import SessionLocal
+    from specgraph.models import PipelineRun
+
+    db = SessionLocal()
+    try:
+        row = db.get(PipelineRun, job.id)
+        snap = job.snapshot()
+        if not row:
+            db.add(
+                PipelineRun(
+                    id=job.id,
+                    name=job.name,
+                    status=job.status,
+                    mode=job.mode,
+                    events=snap["events"][-80:],
+                    tokens=snap["tokens"],
+                    result=job.result,
+                    error=job.error,
+                    user_id=job.user_id,
+                )
+            )
+        else:
+            row.status = job.status
+            row.mode = job.mode
+            row.events = snap["events"][-80:]
+            row.tokens = snap["tokens"]
+            row.result = job.result
+            row.error = job.error
+        db.commit()
+    except Exception:
+        log.exception("persist job %s", job.id)
+        db.rollback()
+    finally:
+        db.close()
+
+
+def _load_db(job_id: str) -> Job | None:
+    from specgraph.db import SessionLocal
+    from specgraph.models import PipelineRun
+
+    db = SessionLocal()
+    try:
+        row = db.get(PipelineRun, job_id)
+        if not row:
+            return None
+        j = Job(id=row.id, name=row.name, status=row.status, user_id=row.user_id, mode=row.mode)
+        j.events = list(row.events or [])
+        j.tokens = dict(row.tokens or {})
+        j.result = row.result
+        j.error = row.error
+        return j
+    finally:
+        db.close()
 
 
 def start_job(
@@ -72,9 +133,16 @@ def start_job(
     scheme_name: str | None = None,
     user_id: int | None = None,
 ) -> Job:
+    if _running_count() >= int(settings.max_parallel_jobs):
+        raise RuntimeError(f"уже идёт {_running_count()} прогона — подождите")
+    ids = list(kwargs.get("requirement_ids") or [])
+    cap = int(settings.max_reqs_per_run)
+    if len(ids) > cap:
+        kwargs = {**kwargs, "requirement_ids": ids[:cap], "truncated_to": cap}
     job = Job(id=uuid4().hex[:12], name=name, user_id=user_id)
     with _JOBS_LOCK:
         _JOBS[job.id] = job
+    _persist(job)
 
     def work() -> None:
         from specgraph.db import SessionLocal
@@ -82,17 +150,20 @@ def start_job(
         db = SessionLocal()
         try:
             job.status = "running"
-            job.emit({"event": "start", "pipeline": name, "step": "старт"})
+            job.emit({"event": "start", "pipeline": name, "step": "старт", "truncated_to": kwargs.get("truncated_to")})
             result = _dispatch(name, db, kwargs, job, scheme_path, scheme_name)
             job.result = result
+            job.mode = result.get("mode")
             job.status = "done"
-            job.emit({"event": "done", "step": "готово", "result": _slim(result)})
+            job.emit({"event": "done", "step": "готово", "result": _slim(result), "mode": job.mode})
         except Exception as exc:  # noqa: BLE001
             log.exception("job %s failed", job.id)
             job.status = "error"
             job.error = str(exc)
+            job.mode = "error"
             job.emit({"event": "error", "step": "ошибка", "error": str(exc)})
         finally:
+            _persist(job)
             db.close()
 
     threading.Thread(target=work, daemon=True).start()
@@ -100,10 +171,20 @@ def start_job(
 
 
 def _slim(result: dict[str, Any]) -> dict[str, Any]:
-    keep = {k: result[k] for k in ("download", "output_file", "count", "result", "output", "pipeline", "coverage") if k in result}
+    keep = {
+        k: result[k]
+        for k in ("download", "downloads", "output_file", "count", "result", "output", "pipeline", "coverage", "mode")
+        if k in result
+    }
     if "files" in result:
         keep["files"] = result["files"]
+    if "suggestions" in result:
+        keep["suggestions"] = result["suggestions"]
     return keep
+
+
+def _progress(job: Job) -> Callable[[dict[str, Any]], None]:
+    return job.emit
 
 
 def _dispatch(name: str, db, kwargs: dict[str, Any], job: Job, scheme_path: Path | None, scheme_name: str | None) -> dict[str, Any]:
@@ -117,7 +198,7 @@ def _dispatch(name: str, db, kwargs: dict[str, Any], job: Job, scheme_path: Path
             if kw.get("requirement_id"):
                 ids = [kw["requirement_id"]]
             kw["requirement_ids"] = ids[:1]
-        return run_correctness_matrix(db, on_progress=on, **kw)
+        return run_correctness_matrix(db, on_progress=on, run_id=job.id, **kw)
     if name == "unit-tests":
         from specgraph.pipelines.unit_tests import run_unit_tests
 

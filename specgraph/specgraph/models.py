@@ -279,6 +279,38 @@ class IndexBatch(Base):
     status: Mapped[str] = mapped_column(String(32), default="done")
 
 
+class PipelineRun(Base):
+    """Прогон пайплайна в БД — переживает рестарт uvicorn."""
+
+    __tablename__ = "pipeline_runs"
+
+    id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    name: Mapped[str] = mapped_column(String(64), index=True)
+    status: Mapped[str] = mapped_column(String(32), default="queued")
+    mode: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    events: Mapped[list] = mapped_column(JSON, default=list)
+    tokens: Mapped[dict] = mapped_column(JSON, default=dict)
+    result: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    user_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class RequirementReview(Base):
+    """Последние и прошлые оценки требования."""
+
+    __tablename__ = "requirement_reviews"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    requirement_id: Mapped[int] = mapped_column(ForeignKey("requirements.id"), index=True)
+    run_id: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    passed: Mapped[bool | None] = mapped_column(nullable=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    marks: Mapped[dict] = mapped_column(JSON, default=dict)
+    mode: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
 class Embedding(Base):
     """Векторный индекс сущностей для семантического поиска."""
 

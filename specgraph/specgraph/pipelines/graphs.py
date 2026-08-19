@@ -18,7 +18,6 @@ from specgraph.llm import invoke_chat
 from specgraph.retrieval.context import context_as_prompt, gather_context
 
 _CB: Any = None
-_FILTER: dict[str, Any] = {}
 
 
 class PipelineState(TypedDict, total=False):
@@ -28,6 +27,7 @@ class PipelineState(TypedDict, total=False):
     document_id: int | None
     requirement_id: int | None
     requirement_ids: list[int] | None
+    debug: bool
     context: dict[str, Any]
     prompt: str
     draft: str
@@ -41,28 +41,26 @@ def _notify(_state: PipelineState, ev: dict[str, Any]) -> None:
 
 
 def _retrieve(state: PipelineState, db: Session) -> PipelineState:
-    filt = _FILTER or {}
-    ids = state.get("requirement_ids") or filt.get("requirement_ids")
+    ids = state.get("requirement_ids")
     ctx = gather_context(
         db,
-        query=state.get("query") or filt.get("query"),
-        product_id=state.get("product_id") or filt.get("product_id"),
-        product_code=state.get("product_code") or filt.get("product_code"),
-        document_id=state.get("document_id") or filt.get("document_id"),
-        requirement_id=state.get("requirement_id") or filt.get("requirement_id"),
+        query=state.get("query"),
+        product_id=state.get("product_id"),
+        product_code=state.get("product_code"),
+        document_id=state.get("document_id"),
+        requirement_id=state.get("requirement_id"),
         requirement_ids=ids,
     )
     prompt = context_as_prompt(ctx)
-    dbg = bool(filt.get("debug") or state.get("debug"))
     ev = {"event": "retrieve", "step": f"контекст: {len(ctx.get('requirements') or [])} треб."}
-    if dbg:
-        ev["debug"] = {"prompt": prompt[:12000], "requirement_ids": ids, "document_id": filt.get("document_id") or state.get("document_id")}
+    if state.get("debug"):
+        ev["debug"] = {"prompt": prompt[:12000], "requirement_ids": ids, "document_id": state.get("document_id")}
     _notify(state, ev)
     return {**state, "context": ctx, "prompt": prompt}
 
 
 def _reason(system: str, state: PipelineState, *, slot: str = "expensive") -> PipelineState:
-    dbg = bool((_FILTER or {}).get("debug") or state.get("debug"))
+    dbg = bool(state.get("debug"))
     ev = {"event": "llm", "step": f"запрос модели ({slot})"}
     if dbg:
         ev["debug"] = {"system": system, "user": (state.get("prompt") or "")[:16000], "slot": slot}
@@ -71,9 +69,9 @@ def _reason(system: str, state: PipelineState, *, slot: str = "expensive") -> Pi
     if usage.get("offline") or not text:
         draft = _offline_draft(system, state)
         _notify(state, {"event": "llm_done", "step": "офлайн-эвристика", "tokens": usage, "mode": "heuristic"})
-        return {**state, "draft": draft, "tokens": usage}
+        return {**state, "draft": draft, "tokens": usage, "mode": "heuristic"}
     _notify(state, {"event": "llm_done", "step": "ответ модели", "tokens": usage, "mode": "llm"})
-    return {**state, "draft": text, "tokens": usage}
+    return {**state, "draft": text, "tokens": usage, "mode": "llm"}
 
 
 def _offline_draft(system: str, state: PipelineState) -> str:
@@ -110,6 +108,7 @@ def _pack(state: PipelineState) -> PipelineState:
         **state,
         "result": {
             "output": state.get("draft"),
+            "mode": state.get("mode") or "heuristic",
             "context_summary": {
                 "subgraphs": len((state.get("context") or {}).get("subgraphs") or []),
                 "hits": len((state.get("context") or {}).get("hits") or []),
@@ -176,25 +175,21 @@ def run_pipeline(name: str, db: Session, **kwargs) -> dict[str, Any]:
             on_progress=kwargs.get("on_progress"),
         )
     app = _compile(entry["system"], db, slot=entry.get("slot") or "expensive")
-    global _CB, _FILTER
+    global _CB
     payload = {k: v for k, v in kwargs.items() if k != "on_progress"}
     _CB = kwargs.get("on_progress")
-    _FILTER = {
-        "document_id": payload.get("document_id"),
-        "requirement_ids": payload.get("requirement_ids"),
-        "requirement_id": payload.get("requirement_id"),
-        "product_id": payload.get("product_id"),
-        "query": payload.get("query"),
-        "debug": payload.get("debug"),
-    }
     try:
         out = app.invoke({"query": kwargs.get("query") or entry.get("title") or name, **payload})
     finally:
         _CB = None
-        _FILTER = {}
     result = out["result"]
     result["pipeline"] = name
     result["slot"] = entry.get("slot")
+    result.setdefault("mode", out.get("mode") or "heuristic")
+    if name == "help-write":
+        from specgraph.pipelines.reviews import store_drafts_from_text
+
+        result["suggestions"] = store_drafts_from_text(db, result.get("output") or "", payload.get("requirement_ids"))
     from specgraph.pipelines.exports import write_text_bundle
 
     result["downloads"] = write_text_bundle(name, result, title=entry.get("title") or name)

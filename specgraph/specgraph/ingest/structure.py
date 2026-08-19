@@ -94,6 +94,7 @@ class DraftGraph:
     sources: dict[str, str] = field(default_factory=dict)
     title: str | None = None
     attachment_codes: list[str] = field(default_factory=list)
+    has_cards: bool = False
 
 
 def _uniq(items: list[str]) -> list[str]:
@@ -497,6 +498,7 @@ def from_extracted(doc: ExtractedDoc) -> DraftGraph:
 
     if not b.g.products:
         b.ensure_product("P-ROOT", doc.title or "Документ", description=(doc.text or "")[:2000])
+    b.g.has_cards = b.has_cards
     return b.g
 
 

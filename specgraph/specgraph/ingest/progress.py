@@ -81,9 +81,12 @@ def iter_index(
             "step": "читаем файл и ищем карточки" if role == "spec" else "читаем вложение",
         }
         try:
-            doc = ingest_file(db, path, name, index=False, uploaded_by_id=uploaded_by_id)
+            nest = db.begin_nested()
+            doc = ingest_file(db, path, name, index=False, uploaded_by_id=uploaded_by_id, commit=False)
+            nest.commit()
             docs.append(doc)
             snap = _snap_doc(db, doc.id)
+            report = (doc.parse_meta or {}).get("ingest_report") or snap.get("counts")
             yield {
                 "event": "file_done",
                 "index": i,
@@ -94,8 +97,10 @@ def iter_index(
                 "title": doc.title,
                 "status": doc.status,
                 "entities": snap,
+                "ingest_report": report,
             }
         except Exception as exc:  # noqa: BLE001
+            db.rollback()
             yield {
                 "event": "file_error",
                 "index": i,
@@ -112,10 +117,11 @@ def iter_index(
     totals = db_totals(db)
     from specgraph.models import IndexBatch
 
+    reports = [(d.parse_meta or {}).get("ingest_report") for d in docs]
     batch = IndexBatch(
         uploaded_by_id=uploaded_by_id,
         files=planned,
-        totals=totals,
+        totals={**totals, "reports": [r for r in reports if r]},
         document_ids=[d.id for d in docs],
         status="done",
     )

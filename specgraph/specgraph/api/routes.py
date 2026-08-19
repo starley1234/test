@@ -278,18 +278,30 @@ def _req_dump(r: Requirement) -> dict:
         "revision": r.revision,
         "is_current": r.is_current,
         "created_at": r.created_at.isoformat() if getattr(r, "created_at", None) else None,
+        "review": (r.extra or {}).get("review"),
+        "draft_text": (r.extra or {}).get("draft_text"),
         "attributes": {a.key: a.value for a in r.attributes},
     }
 
 
 @router.get("/requirements")
-def list_requirements(document_id: int | None = None, product_id: int | None = None, db: Session = Depends(get_db)):
+def list_requirements(
+    document_id: int | None = None,
+    product_id: int | None = None,
+    review: str | None = None,
+    db: Session = Depends(get_db),
+):
     q = db.query(Requirement).options(joinedload(Requirement.attributes)).filter(Requirement.is_current.is_(True))
     if document_id:
         q = q.filter(Requirement.document_id == document_id)
     if product_id:
         q = q.filter(Requirement.product_id == product_id)
-    return [_req_dump(r) for r in q.all()]
+    rows = [_req_dump(r) for r in q.all()]
+    if review == "fail":
+        rows = [r for r in rows if r.get("review") and r["review"].get("pass") is False]
+    if review == "draft":
+        rows = [r for r in rows if r.get("draft_text")]
+    return rows
 
 
 @router.get("/requirements/{req_id}")

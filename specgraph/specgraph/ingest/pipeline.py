@@ -34,8 +34,28 @@ from specgraph.models import (
 )
 
 
+def make_ingest_report(db: Session, doc: Document, draft: DraftGraph | None = None) -> dict[str, Any]:
+    reqs = db.query(Requirement).filter(Requirement.document_id == doc.id).all()
+    return {
+        "filename": doc.filename,
+        "has_cards": bool(draft.has_cards) if draft else any((r.extra or {}).get("card") for r in reqs),
+        "cards": sum(1 for r in reqs if (r.extra or {}).get("card")),
+        "stubs": sum(1 for r in reqs if (r.extra or {}).get("stub")),
+        "appendix": sum(1 for r in reqs if (r.extra or {}).get("appendix")),
+        "requirements": len(reqs),
+        "products": db.query(Product).filter(Product.document_id == doc.id).count(),
+        "images": db.query(Illustration).filter(Illustration.document_id == doc.id).count(),
+    }
+
+
 def ingest_file(
-    db: Session, src: Path, original_name: str, *, index: bool = True, uploaded_by_id: int | None = None
+    db: Session,
+    src: Path,
+    original_name: str,
+    *,
+    index: bool = True,
+    uploaded_by_id: int | None = None,
+    commit: bool = True,
 ) -> Document:
     kind = detect_kind(original_name)
     dest = settings.upload_dir / f"{uuid4().hex}_{original_name}"
@@ -79,11 +99,13 @@ def ingest_file(
     persist_graph(db, doc, draft)
     persist_images(db, doc, images, draft.figure_captions)
     persist_self_attachment(db, doc, draft)
-    db.commit()
-    db.refresh(doc)
-    resolve_pending(db)
-    db.commit()
-    if index:
+    doc.parse_meta = {**(doc.parse_meta or {}), "ingest_report": make_ingest_report(db, doc, draft)}
+    if commit:
+        db.commit()
+        db.refresh(doc)
+        resolve_pending(db)
+        db.commit()
+    if index and commit:
         try:
             from specgraph.retrieval.embeddings import embed_and_store
 
@@ -395,39 +417,6 @@ def bind_attachment_to_requirements(db: Session, att: Attachment) -> int:
         pending.add((req.id, key))
         n += 1
     return n
-    n = 0
-    stem = Path(att.filename).stem
-    needles = [x for x in (att.code, stem, base_code(stem)) if x]
-    with db.no_autoflush:
-        reqs = db.query(Requirement).all()
-    for req in reqs:
-        blob = " ".join(
-            [
-                req.text or "",
-                req.code or "",
-                " ".join(f"{a.key}={a.value}" for a in req.attributes),
-            ]
-        )
-        if not any(nd and nd in blob for nd in needles):
-            continue
-        if not att.requirement_id:
-            att.requirement_id = req.id
-        key = f"файл:{att.filename}"[:128]
-        exists = (
-            db.query(RequirementAttribute)
-            .filter(RequirementAttribute.requirement_id == req.id, RequirementAttribute.key == key)
-            .first()
-        )
-        if not exists:
-            db.add(
-                RequirementAttribute(
-                    requirement_id=req.id,
-                    key=key,
-                    value=(att.text_content or "")[:20000],
-                )
-            )
-            n += 1
-    return n
 
 
 def ingest_many(db: Session, files: list[tuple[Path, str]], *, index: bool = False) -> list[Document]:
@@ -441,7 +430,7 @@ def ingest_many(db: Session, files: list[tuple[Path, str]], *, index: bool = Fal
     ordered = sorted(files, key=lambda x: rank(x[1]))
     docs: list[Document] = []
     for path, name in ordered:
-        docs.append(ingest_file(db, path, name, index=index))
+        docs.append(ingest_file(db, path, name, index=index, commit=False))
     for att in db.query(Attachment).all():
         bind_attachment_to_requirements(db, att)
     resolve_pending(db)

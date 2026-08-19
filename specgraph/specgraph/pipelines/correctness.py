@@ -143,6 +143,7 @@ def evaluate(
                 }
             )
         row = _llm_row(r, checklist, ctx)
+        row["id"] = r.id
         rows.append(row)
         if on_progress:
             on_progress(
@@ -249,6 +250,7 @@ def run_correctness_matrix(
     requirement_ids: list[int] | None = None,
     designations: dict[str, str] | None = None,
     on_progress: Any = None,
+    run_id: str | None = None,
     **_: Any,
 ) -> dict[str, Any]:
     report = evaluate(
@@ -275,4 +277,15 @@ def run_correctness_matrix(
     )
     extra["docx"] = report["download"]
     report["downloads"] = extra
+    modes = {row.get("mode") for row in report.get("rows") or []}
+    report["mode"] = "llm" if modes == {"llm"} else ("mixed" if "llm" in modes else "heuristic")
+    if run_id:
+        from specgraph.pipelines.reviews import save_review
+
+        by_code = {r.code: r for r in _current_requirements(db, document_id, product_id, requirement_ids)}
+        for row in report.get("rows") or []:
+            req = by_code.get(row.get("code"))
+            if req:
+                save_review(db, req, row, run_id=run_id)
+        db.commit()
     return report

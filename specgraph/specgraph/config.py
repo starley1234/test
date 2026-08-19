@@ -12,6 +12,8 @@ class Settings(BaseSettings):
     upload_dir: Path = Path("./data/uploads")
     media_dir: Path = Path("./data/media")
     embedding_dim: int = 384
+    max_reqs_per_run: int = 40
+    max_parallel_jobs: int = 3
 
     admin_username: str = "admin"
     admin_password: str = "admin"
