@@ -50,9 +50,11 @@
       <div class="drop" id="drop">Перетащите .docx / .xlsx / .json<br>или выберите несколько файлов
         <div style="margin-top:10px"><input id="files" type="file" multiple /></div>
       </div>
-      <div style="margin:10px 0; display:flex; gap:8px">
+      <div style="margin:10px 0; display:flex; gap:8px; flex-wrap:wrap">
         <button id="upload">Загрузить пакет</button>
         <button class="ghost" id="refresh">Обновить</button>
+        <button class="ghost" id="matrix">Матрица корректности</button>
+        <button class="ghost" id="unittests">Модульные тесты</button>
       </div>
       <div id="msg" class="muted"></div>
       <h2 style="margin-top:22px">Документы</h2>
@@ -143,6 +145,18 @@ function escapeHtml(s){return s.replace(/[&<>]/g, c=>({ '&':'&amp;','<':'&lt;','
 
 $('q').addEventListener('input', renderReqs);
 $('refresh').onclick = () => selectDoc(currentDoc);
+$('unittests').onclick = async () => {
+  $('msg').textContent = 'тесты…';
+  try {
+    const res = await j('/pipelines/unit-tests', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ document_id: currentDoc }),
+    });
+    const links = (res.files||[]).map(f => '<a href="'+f.download+'" style="color:#3d9cf0">'+f.requirement+'</a>').join(' · ');
+    $('msg').innerHTML = (res.count||0)+' файлов. Код: '+(res.code_attached?'есть':'не приложен')+'<br>'+links;
+  } catch(e) { $('msg').textContent = e.message; }
+};
 $('matrix').onclick = async () => {
   $('msg').textContent = 'матрица…';
   try {

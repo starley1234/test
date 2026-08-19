@@ -221,6 +221,19 @@ def pipeline_correctness(body: PipelineRequest, db: Session = Depends(get_db)):
     return run_correctness_matrix(db, document_id=body.document_id, product_id=body.product_id)
 
 
+@router.post("/pipelines/unit-tests")
+def pipeline_unit_tests(body: PipelineRequest, db: Session = Depends(get_db)):
+    from specgraph.pipelines.unit_tests import run_unit_tests
+
+    return run_unit_tests(
+        db,
+        document_id=body.document_id,
+        requirement_id=body.requirement_id,
+        query=body.query,
+        source_code=body.source_code,
+    )
+
+
 @router.post("/pipelines/{name}")
 def run_named_pipeline(name: str, body: PipelineRequest, db: Session = Depends(get_db)):
     from specgraph.pipelines.graphs import run_pipeline

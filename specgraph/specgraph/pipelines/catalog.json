@@ -20,5 +20,11 @@
     "title": "Матрица рассмотрения корректности",
     "system": "см. pipelines/correctness.py — методика А.3, выход matrix.docx",
     "kind": "matrix"
+  },
+  "unit-tests": {
+    "slot": "expensive",
+    "title": "Модульные тесты (Excel + прогон)",
+    "system": "см. pipelines/unit_tests.py — шаблон result.xlsx",
+    "kind": "unit-xlsx"
   }
 }

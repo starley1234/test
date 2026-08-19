@@ -36,3 +36,15 @@ POST /pipelines/my-check
 
 Критерии правятся в `pipelines/correctness_checklist.json` (снято с таблицы А.3).
 Оценка: дорогая модель; без ключа — простые правила (чтобы файл всё равно собрался).
+
+## Модульные тесты (инженер верификации)
+
+Образец: `input/for_pipeline2/result.xlsx`. Промпт: `pipelines/unit_tests_prompt.txt`.
+
+1. Требования уже в БД.
+2. `POST /pipelines/unit-tests`
+   `{ "document_id": N, "query": "HWRQ.054" }`
+   опционально `"source_code": "/* .c модуля */"`.
+3. На каждое требование — Excel: Info, InputData, OutputData, Comments (+ столбец «Метод»), Simulation.
+
+Прогон по коду: код в задаче не указан. Без `source_code` все кейсы в Simulation = `blocked`. Если код передали — ищем функцию, помечаем опасные регистры, **на МК не исполняем**.

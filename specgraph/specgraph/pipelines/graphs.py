@@ -130,6 +130,10 @@ def run_pipeline(name: str, db: Session, **kwargs) -> dict[str, Any]:
         from specgraph.pipelines.correctness import run_correctness_matrix
 
         return run_correctness_matrix(db, **kwargs)
+    if entry.get("kind") == "unit-xlsx" or name == "unit-tests":
+        from specgraph.pipelines.unit_tests import run_unit_tests
+
+        return run_unit_tests(db, **kwargs)
     app = _compile(entry["system"], db, slot=entry.get("slot") or "expensive")
     out = app.invoke({"query": kwargs.get("query") or entry.get("title") or name, **kwargs})
     result = out["result"]
