@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
     database_url: str = "sqlite:///./specgraph.db"
+    sqlite_fallback: bool = True
     tika_server_url: str = "http://localhost:9998"
     upload_dir: Path = Path("./data/uploads")
     media_dir: Path = Path("./data/media")

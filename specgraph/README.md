@@ -41,12 +41,14 @@ SpecGraph:
 
 ```bash
 cd specgraph
-docker compose up -d db tika
 python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
 cp .env.example .env
+# без Postgres — так и оставьте DATABASE_URL=sqlite:///./specgraph.db
 uvicorn specgraph.main:app --reload --host 0.0.0.0 --port 8000
 ```
+
+Если в `.env` прописан Postgres, а контейнер не запущен, сервис **сам перейдёт на SQLite** и напишет предупреждение. Postgres: `docker compose up -d db`.
 
 UI: `http://localhost:8000/` · API: `http://localhost:8000/docs`
 

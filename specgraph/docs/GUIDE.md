@@ -45,6 +45,16 @@
 
 У каждого: `BASE_URL`, `API_KEY`, `MODEL`.
 
+## Запуск без Postgres
+
+В `.env` поставьте:
+
+```
+DATABASE_URL=sqlite:///./specgraph.db
+```
+
+Если там остался `postgresql+psycopg://...` и порт 5432 закрыт — приложение не падает: пишет warning и открывает `specgraph.db` рядом с проектом. Чтобы вернуть Postgres: `docker compose up -d db`.
+
 ## Собрать базу
 
 В UI: перетащили файлы → **Индексировать**. Справа появляются карточки.

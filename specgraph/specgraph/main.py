@@ -1,11 +1,13 @@
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
-
 from fastapi.staticfiles import StaticFiles
 
 from specgraph.api.routes import STATIC, router
 from specgraph.db import init_db
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 
 
 @asynccontextmanager
