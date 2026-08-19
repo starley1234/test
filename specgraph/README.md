@@ -48,7 +48,9 @@ cp .env.example .env
 uvicorn specgraph.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
-API: `http://localhost:8000/docs`
+UI: `http://localhost:8000/` · API: `http://localhost:8000/docs`
+
+Пакет файлов (спецификация + приложения `.docx`/`.xlsx`): `POST /documents/batch`
 
 ## Пайплайны
 

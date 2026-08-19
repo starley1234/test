@@ -2,7 +2,9 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from specgraph.api.routes import router
+from fastapi.staticfiles import StaticFiles
+
+from specgraph.api.routes import STATIC, router
 from specgraph.db import init_db
 
 
@@ -18,6 +20,8 @@ app = FastAPI(
     lifespan=lifespan,
 )
 app.include_router(router)
+if STATIC.exists():
+    app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
 
 
 @app.get("/health")

@@ -67,6 +67,8 @@ def detect_kind(filename: str) -> str:
         return "doc"
     if lower.endswith(".json"):
         return "parsed_json"
+    if lower.endswith((".xlsx", ".xlsm")):
+        return "xlsx"
     return "other"
 
 
@@ -293,8 +295,42 @@ def extracted_from_script_json(payload: dict[str, Any]) -> ExtractedDoc:
     )
 
 
+def extract_xlsx(path: Path) -> ExtractedDoc:
+    """Таблица Excel как набор table-блоков (приложение к требованию)."""
+    try:
+        import openpyxl
+    except ImportError:
+        return ExtractedDoc(title=path.stem, paragraphs=[path.stem], tables=[], meta={"xlsx_error": "openpyxl missing"})
+    wb = openpyxl.load_workbook(path, data_only=True, read_only=True)
+    blocks: list[Block] = []
+    tables: list[list[list[str]]] = []
+    paragraphs = [path.stem]
+    blocks.append(Block(kind="heading", text=path.stem, heading_level=1))
+    for sheet in wb.sheetnames:
+        ws = wb[sheet]
+        blocks.append(Block(kind="heading", text=f"Лист {sheet}", heading_level=2))
+        rows: list[list[str]] = []
+        for row in ws.iter_rows(values_only=True):
+            cells = ["" if c is None else str(c).strip() for c in row]
+            if any(cells):
+                rows.append(cells)
+        if rows:
+            tables.append(rows)
+            blocks.append(Block(kind="table", rows=rows))
+    wb.close()
+    return ExtractedDoc(
+        title=path.stem,
+        paragraphs=paragraphs,
+        tables=tables,
+        blocks=blocks,
+        meta={"source": "xlsx", "sheets": list(wb.sheetnames) if False else []},
+    )
+
+
 def extract_any(path: Path) -> ExtractedDoc:
     kind = detect_kind(path.name)
+    if kind == "xlsx":
+        return extract_xlsx(path)
     if kind == "parsed_json":
         payload = extract_parsed_json(path)
         if "document_structure" in payload:

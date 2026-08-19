@@ -8,8 +8,11 @@ from sqlalchemy.orm import Session
 
 from specgraph.config import settings
 from specgraph.ingest.extract import detect_kind, extract_any, extract_parsed_json
+from specgraph.ingest.ids import base_code, filename_matches_code, find_appendix_ids, find_ids
+from specgraph.ingest.resolve import ensure_stub, find_by_code, link_derived, merge_if_stub, resolve_pending
 from specgraph.ingest.structure import DraftGraph, from_extracted, from_parsed_json
 from specgraph.models import (
+    Attachment,
     Document,
     DocumentKind,
     EntityRelation,
@@ -57,10 +60,19 @@ def ingest_file(db: Session, src: Path, original_name: str, *, index: bool = Tru
     db.add(doc)
     db.flush()
 
+    doc.parse_meta = {
+        **(doc.parse_meta or {}),
+        "glossary": draft.glossary,
+        "sources": draft.sources,
+        "counts": {"products": len(draft.products), "requirements": len(draft.requirements)},
+    }
     persist_graph(db, doc, draft)
     persist_images(db, doc, images, draft.figure_captions)
+    persist_self_attachment(db, doc, draft)
     db.commit()
     db.refresh(doc)
+    resolve_pending(db)
+    db.commit()
     if index:
         try:
             from specgraph.retrieval.embeddings import embed_and_store
@@ -142,21 +154,46 @@ def persist_graph(db: Session, doc: Document, draft: DraftGraph) -> None:
             )
 
     reqs: dict[str, Requirement] = {}
+
+    def _put(code: str, req: Requirement) -> None:
+        reqs[code] = req
+        reqs[base_code(code)] = req
+
     for dr in draft.requirements:
         kind = dr.kind if dr.kind in {e.value for e in RequirementKind} else "unknown"
-        req = Requirement(
-            document_id=doc.id,
-            product_id=products[dr.product_code].id if dr.product_code and dr.product_code in products else None,
-            parent_id=None,
-            code=dr.code,
-            title=dr.title,
-            text=dr.text,
-            kind=RequirementKind(kind),
-            section_path=dr.section_path,
-        )
-        db.add(req)
-        db.flush()
-        reqs[dr.code] = req
+        extra = dict(dr.extra or {})
+        if dr.stub:
+            extra["stub"] = True
+        existing = find_by_code(db, dr.code)
+        if existing and (existing.extra or {}).get("stub"):
+            merge_if_stub(
+                existing,
+                Requirement(
+                    document_id=doc.id,
+                    code=dr.code,
+                    text=dr.text,
+                    kind=RequirementKind(kind),
+                    extra=extra,
+                    section_path=dr.section_path,
+                ),
+            )
+            existing.document_id = doc.id
+            req = existing
+        else:
+            req = Requirement(
+                document_id=doc.id,
+                product_id=products[dr.product_code].id if dr.product_code and dr.product_code in products else None,
+                parent_id=None,
+                code=dr.code,
+                title=dr.title,
+                text=dr.text,
+                kind=RequirementKind(kind),
+                section_path=dr.section_path,
+                extra=extra,
+            )
+            db.add(req)
+            db.flush()
+        _put(dr.code, req)
         for k, v in dr.attributes.items():
             db.add(RequirementAttribute(requirement_id=req.id, key=k, value=v))
         if req.product_id:
@@ -169,20 +206,15 @@ def persist_graph(db: Session, doc: Document, draft: DraftGraph) -> None:
                     dst_id=req.product_id,
                 )
             )
-
-    for dr in draft.requirements:
-        if dr.parent_code and dr.parent_code in reqs and dr.code in reqs:
-            child = reqs[dr.code]
-            child.parent_id = reqs[dr.parent_code].id
-            db.add(
-                EntityRelation(
-                    rel_type=RelationType.REFINES,
-                    src_type=EntityType.REQUIREMENT,
-                    src_id=child.id,
-                    dst_type=EntityType.REQUIREMENT,
-                    dst_id=reqs[dr.parent_code].id,
-                )
-            )
+        parents = list(dr.parent_codes or [])
+        if dr.parent_code:
+            parents.append(dr.parent_code)
+        for pcode in dict.fromkeys(parents):
+            parent = reqs.get(pcode) or reqs.get(base_code(pcode)) or ensure_stub(db, pcode, document_id=doc.id)
+            _put(pcode, parent)
+            link_derived(db, req, parent)
+        for acode in dr.attachment_refs or []:
+            db.add(RequirementAttribute(requirement_id=req.id, key=f"приложение:{base_code(acode)}", value=acode))
 
     type_map = {
         "applies_to": RelationType.APPLIES_TO,
@@ -253,3 +285,83 @@ def persist_images(db: Session, doc: Document, images, captions: list[str]) -> N
                         )
                     )
                     break
+
+
+def persist_self_attachment(db: Session, doc: Document, draft: DraftGraph) -> None:
+    """Если сам файл — приложение (HRDW.00001), сохранить текст как вложение требований."""
+    codes = list(draft.attachment_codes or [])
+    codes += find_appendix_ids(doc.filename or "") + find_appendix_ids(doc.title or "")
+    codes = list(dict.fromkeys(codes))
+    if not codes:
+        return
+    text = (doc.raw_text or "")[:50000]
+    for code in codes:
+        att = Attachment(
+            document_id=doc.id,
+            requirement_id=None,
+            code=base_code(code),
+            filename=doc.filename,
+            storage_path=doc.storage_path,
+            text_content=text,
+            extra={"role": "appendix"},
+        )
+        db.add(att)
+        db.flush()
+        bind_attachment_to_requirements(db, att)
+
+
+def bind_attachment_to_requirements(db: Session, att: Attachment) -> int:
+    n = 0
+    if not att.code:
+        return 0
+    reqs = db.query(Requirement).all()
+    for req in reqs:
+        blob = " ".join(
+            [
+                req.text or "",
+                req.code,
+                " ".join(f"{a.key}={a.value}" for a in req.attributes),
+            ]
+        )
+        if att.code in blob or filename_matches_code(att.filename, att.code):
+            if att.code in blob or any(att.code in (a.value or "") for a in req.attributes):
+                if not att.requirement_id:
+                    att.requirement_id = req.id
+                key = f"файл:{att.filename}"
+                exists = (
+                    db.query(RequirementAttribute)
+                    .filter(RequirementAttribute.requirement_id == req.id, RequirementAttribute.key == key)
+                    .first()
+                )
+                if not exists:
+                    db.add(
+                        RequirementAttribute(
+                            requirement_id=req.id,
+                            key=key,
+                            value=(att.text_content or "")[:20000],
+                        )
+                    )
+                    n += 1
+    return n
+
+
+def ingest_many(db: Session, files: list[tuple[Path, str]], *, index: bool = False) -> list[Document]:
+    """Пакет: сначала спецификации, потом приложения — чтобы связать файлы с карточками."""
+
+    def rank(name: str) -> int:
+        if find_appendix_ids(name):
+            return 2
+        if name.lower().endswith((".xlsx", ".xlsm")):
+            return 2
+        return 1
+
+    ordered = sorted(files, key=lambda x: rank(x[1]))
+    docs: list[Document] = []
+    for path, name in ordered:
+        docs.append(ingest_file(db, path, name, index=index))
+    # второй проход: привязать приложения ко всем требованиям
+    for att in db.query(Attachment).all():
+        bind_attachment_to_requirements(db, att)
+    resolve_pending(db)
+    db.commit()
+    return docs

@@ -15,10 +15,12 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from specgraph.ingest.extract import Block, ExtractedDoc
-
-# MK-114.OPPO.DATA.001/B  |  MK-114.TPO.FNCT.021  |  MK-114.OPPO.DATA.021/C.01
-REQ_ID = re.compile(
-    r"\b([A-Z]{1,12}-\d{1,4}(?:\.[A-Z]{2,8}){1,6}\.\d{3}(?:/[A-Z](?:\.\d{2})?)?)\b"
+from specgraph.ingest.ids import (
+    REQ_ID,
+    find_appendix_ids,
+    find_ids,
+    kind_from_code,
+    parse_id,
 )
 REQ_ID_LOOSE = re.compile(
     r"\b((?:REQ|ТР|Треб|HLR|LLR)[-–]?\d+(?:\.\d+)*)\b",
@@ -89,6 +91,8 @@ class DraftRequirement:
     attributes: dict[str, str] = field(default_factory=dict)
     extra: dict[str, Any] = field(default_factory=dict)
     stub: bool = False
+    parent_codes: list[str] = field(default_factory=list)
+    attachment_refs: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -109,9 +113,28 @@ class DraftGraph:
     glossary: dict[str, str] = field(default_factory=dict)
     sources: dict[str, str] = field(default_factory=dict)
     title: str | None = None
+    attachment_codes: list[str] = field(default_factory=list)
+
+
+def _uniq(items: list[str]) -> list[str]:
+    out: list[str] = []
+    seen: set[str] = set()
+    for x in items:
+        if x and x not in seen and x != "-":
+            seen.add(x)
+            out.append(x)
+    return out
+
+
+def base_ne(a: str, b: str) -> bool:
+    return a.split("/", 1)[0] != b.split("/", 1)[0]
 
 
 def infer_kind(text: str, code: str = "") -> str:
+    if code:
+        k = kind_from_code(code)
+        if k != "unknown":
+            return k
     up = code.upper()
     for token, kind in KIND_BY_TOKEN.items():
         if f".{token}." in up:
@@ -195,9 +218,13 @@ def _push_heading(b: _Builder, text: str, level: int) -> None:
         b.section.append("")
     b.section.append(text)
 
-    ids = REQ_ID.findall(text)
-    if ids and len(text) < 80:
+    ids = find_ids(text)
+    if ids and len(text) < 120:
         b.pending_req = ids[0]
+        parsed = parse_id(ids[0])
+        if parsed.system:
+            b.ensure_product(parsed.system, parsed.system, level=0)
+            b.current_product = b.current_product or parsed.system
         return
 
     decs = DEC_CODE.findall(text)
@@ -360,24 +387,46 @@ def _handle_table(b: _Builder, rows: list[list[str]]) -> None:
             text = ""
         attrs = {k: v for k, v in card.items() if k not in {"id", "text"} and v}
         product = b.current_product
-        # MCU hint in text
-        blob = " ".join([text, card.get("rationale", "")])
+        blob = " ".join([text, card.get("rationale", ""), card.get("note", ""), card.get("source", "")])
         if re.search(r"MCU2|МК2|микроконтроллера №2", blob, re.I):
             product = "MCU2"
         elif re.search(r"MCU1|МК1|микроконтроллера №1", blob, re.I):
             product = "MCU1"
+        parsed = parse_id(code)
+        if parsed.node and parsed.system:
+            node_code = f"{parsed.system}.{parsed.node}"
+            b.ensure_product(parsed.system, parsed.system, level=0)
+            b.ensure_product(node_code, parsed.node.replace("_", " "), parent=parsed.system, level=1)
+            product = product or node_code
+        elif parsed.system:
+            b.ensure_product(parsed.system, parsed.system, level=0)
+            product = product or parsed.system
+        parents = [c for c in find_ids(card.get("source") or "") if base_ne(c, code)]
+        if not parents:
+            parents = [c for c in find_ids(blob) if ".SSTM." in c or ".TPO." in c or ".SYS." in c]
+        parents = _uniq(parents)
+        attachments = _uniq(find_appendix_ids(blob) + find_appendix_ids(card.get("rationale") or ""))
+        extra = {"layer": parsed.layer or ("OPPO" if ".OPPO." in code else ("TPO" if ".TPO." in code else "llr"))}
+        fn_m = re.search(r"(MK_F\.HW[_\s]?\d+(?:\s*[-–]\s*MK_F\.HW[_\s]?\d+)?)", blob)
+        if fn_m:
+            attrs["функция"] = re.sub(r"\s+", "", fn_m.group(1))
         b.add_req(
             DraftRequirement(
                 code=code,
                 text=text or f"Требование {code}",
                 product_code=product,
+                parent_code=parents[0] if parents else None,
+                parent_codes=parents,
+                attachment_refs=attachments,
                 kind=infer_kind(text, code),
                 attributes=attrs,
-                extra={"layer": "OPPO" if ".OPPO." in code else ("TPO" if ".TPO." in code else "llr")},
+                extra=extra,
             )
         )
         if product:
             b.rel("applies_to", "requirement", code, "product", product)
+        for pcode in parents:
+            b.rel("derived_from", "requirement", code, "requirement", pcode)
         b.pending_req = None
         return
 
@@ -494,11 +543,22 @@ def _maybe_product_from_gloss(b: _Builder, term: str, defn: str) -> None:
 
 def from_extracted(doc: ExtractedDoc) -> DraftGraph:
     b = _Builder()
-    blob = (doc.title or "") + "\n" + (doc.text or "")[:4000]
-    if re.search(r"MK-114|МК-114|КТ-178|OPPO\.|TPO\.", blob, re.I):
+    blob = (doc.title or "") + "\n" + (doc.text or "")[:8000]
+    b.g.title = doc.title
+    if re.search(r"MK-114|МК-114|КТ-178|OPPO\.", blob, re.I) and "MK-SSJ" not in blob:
         _seed_system(b, doc.title)
     else:
-        b.g.title = doc.title
+        ids0 = find_ids(blob)
+        if ids0:
+            sys = parse_id(ids0[0]).system
+            if sys:
+                b.ensure_product(sys, sys, level=0)
+                b.current_product = sys
+        # заголовок документа как изделие, если похож на изделие
+        if doc.title and any(k in (doc.title or "").lower() for k in ("конвертер", "изделие", "модуль", "блок")):
+            code = ids0 and parse_id(ids0[0]).system or "P-ROOT"
+            b.ensure_product(code, doc.title, level=0)
+            b.current_product = code
 
     blocks = doc.blocks
     if not blocks:
@@ -524,6 +584,21 @@ def from_extracted(doc: ExtractedDoc) -> DraftGraph:
                 _push_heading(b, block.text, block.heading_level)
             else:
                 _handle_paragraph(b, block.text)
+
+    title_ids = find_appendix_ids(doc.title or "") + find_ids(doc.title or "")
+    if title_ids and not any(not r.stub for r in b.g.requirements):
+        code = title_ids[0]
+        tables_txt = "\n".join(" | ".join(row) for t in doc.tables for row in t[:20])
+        b.add_req(
+            DraftRequirement(
+                code=code,
+                text=((doc.text or "") + "\n" + tables_txt)[:20000],
+                product_code=b.current_product,
+                extra={"appendix": True},
+                attributes={"тип": "приложение"},
+            )
+        )
+        b.g.attachment_codes = getattr(b.g, "attachment_codes", []) + [code]
 
     if not b.g.products:
         b.ensure_product("P-ROOT", doc.title or "Документ", description=(doc.text or "")[:2000])

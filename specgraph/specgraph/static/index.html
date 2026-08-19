@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SpecGraph</title>
+  <style>
+    :root {
+      --bg: #0f1419; --panel: #171e27; --line: #2a3542;
+      --text: #e8eef4; --muted: #8b9aab; --acc: #3d9cf0; --ok: #3ecf8e; --warn: #e6b84d; --bad: #e06c75;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 14px/1.45 "IBM Plex Sans", "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--text); }
+    header { padding: 16px 22px; border-bottom: 1px solid var(--line); display: flex; gap: 16px; align-items: center; }
+    header h1 { font-size: 18px; margin: 0; font-weight: 600; }
+    header span { color: var(--muted); }
+    .wrap { display: grid; grid-template-columns: 320px 1fr 380px; height: calc(100vh - 58px); }
+    aside, main, .detail { overflow: auto; border-right: 1px solid var(--line); padding: 16px; }
+    .detail { border-right: none; }
+    h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 10px; }
+    .drop { border: 1px dashed var(--line); border-radius: 10px; padding: 16px; text-align: center; color: var(--muted); background: #12181f; }
+    .drop.over { border-color: var(--acc); color: var(--acc); }
+    button, .btn { background: var(--acc); color: #041018; border: 0; border-radius: 8px; padding: 8px 12px; font-weight: 600; cursor: pointer; }
+    button.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); }
+    input[type=search], select { width: 100%; background: #12181f; color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+    .item { padding: 8px 10px; border-radius: 8px; cursor: pointer; margin-bottom: 4px; }
+    .item:hover, .item.on { background: #1f2833; }
+    .code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; color: var(--acc); }
+    .tag { display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 999px; background: #243041; color: var(--muted); margin-left: 6px; }
+    .tag.stub { background: #3a2e14; color: var(--warn); }
+    .tag.fn { background: #143326; color: var(--ok); }
+    pre { white-space: pre-wrap; background: #12181f; padding: 12px; border-radius: 8px; font-size: 13px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    td, th { border-bottom: 1px solid var(--line); padding: 6px 4px; vertical-align: top; text-align: left; }
+    .muted { color: var(--muted); }
+    .stat { display: flex; gap: 10px; flex-wrap: wrap; margin: 10px 0 16px; }
+    .stat b { display: block; font-size: 18px; }
+    .stat div { background: #12181f; padding: 8px 10px; border-radius: 8px; min-width: 72px; }
+    .rel { font-size: 12px; color: var(--muted); margin: 4px 0; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>SpecGraph</h1>
+    <span>загрузка спецификаций → изделия, требования, приложения, связи</span>
+  </header>
+  <div class="wrap">
+    <aside>
+      <h2>Загрузка</h2>
+      <div class="drop" id="drop">Перетащите .docx / .xlsx / .json<br>или выберите несколько файлов
+        <div style="margin-top:10px"><input id="files" type="file" multiple /></div>
+      </div>
+      <div style="margin:10px 0; display:flex; gap:8px">
+        <button id="upload">Загрузить пакет</button>
+        <button class="ghost" id="refresh">Обновить</button>
+      </div>
+      <div id="msg" class="muted"></div>
+      <h2 style="margin-top:22px">Документы</h2>
+      <div id="docs"></div>
+    </aside>
+    <main>
+      <h2>Требования</h2>
+      <div class="stat" id="stats"></div>
+      <input type="search" id="q" placeholder="фильтр по коду или тексту…" />
+      <div id="reqs" style="margin-top:10px"></div>
+    </main>
+    <section class="detail">
+      <h2>Карточка</h2>
+      <div id="card" class="muted">Выберите требование</div>
+    </section>
+  </div>
+<script>
+const $ = (id) => document.getElementById(id);
+let docs = [], reqs = [], products = [], currentDoc = null;
+
+async function j(url, opt) {
+  const r = await fetch(url, opt);
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+async function loadDocs() {
+  docs = await j('/documents');
+  $('docs').innerHTML = docs.map(d => `
+    <div class="item ${currentDoc===d.id?'on':''}" onclick="selectDoc(${d.id})">
+      <div>${d.title || d.filename}</div>
+      <div class="muted">${d.filename} · ${d.status}</div>
+    </div>`).join('') || '<div class="muted">пока пусто</div>';
+}
+
+async function selectDoc(id) {
+  currentDoc = id;
+  const qs = id ? ('?document_id='+id) : '';
+  const [info, r, p] = await Promise.all([
+    id ? j('/documents/'+id) : {counts:{}},
+    j('/requirements'+qs),
+    j('/products'+qs),
+  ]);
+  reqs = r; products = p;
+  const c = info.counts || {};
+  $('stats').innerHTML = `
+    <div><b>${c.products ?? p.length}</b><span class="muted">изделия</span></div>
+    <div><b>${c.requirements ?? r.length}</b><span class="muted">требования</span></div>
+    <div><b>${c.illustrations ?? 0}</b><span class="muted">рис.</span></div>
+    <div><b>${c.attachments ?? 0}</b><span class="muted">файлы</span></div>`;
+  renderReqs();
+  loadDocs();
+}
+
+function renderReqs() {
+  const q = $('q').value.toLowerCase();
+  const rows = reqs.filter(r => !q || (r.code+' '+r.text).toLowerCase().includes(q));
+  $('reqs').innerHTML = rows.map(r => {
+    const stub = r.extra && r.extra.stub;
+    return `<div class="item" onclick="openReq(${r.id})">
+      <div class="code">${r.code}${stub?'<span class="tag stub">stub</span>':''}<span class="tag">${r.kind}</span></div>
+      <div>${(r.text||'').slice(0,180)}</div>
+    </div>`;
+  }).join('') || '<div class="muted">нет требований</div>';
+}
+
+async function openReq(id) {
+  const r = await j('/requirements/'+id);
+  const attrs = Object.entries(r.attributes||{}).map(([k,v]) =>
+    `<tr><th>${k}</th><td>${escapeHtml(String(v).slice(0,4000))}</td></tr>`).join('');
+  const parents = (r.parents||[]).map(p =>
+    `<div class="rel">↑ ${p.stub?'<span class="tag stub">не загружено</span>':''}<span class="code">${p.code}</span> ${(p.text||'').slice(0,160)}</div>`).join('');
+  const atts = (r.attachments||[]).map(a =>
+    `<div class="rel">📎 ${a.filename} <span class="muted">${(a.code||'')}</span><pre>${escapeHtml((a.text_content||'').slice(0,2500))}</pre></div>`).join('');
+  $('card').innerHTML = `
+    <div class="code">${r.code}</div>
+    <div class="muted">${r.kind} · product ${r.product_code || r.product_id || '—'}</div>
+    <pre>${escapeHtml(r.text||'')}</pre>
+    <h2>Вышестоящие</h2>${parents || '<div class="muted">нет ссылок</div>'}
+    <h2>Атрибуты и файлы</h2>
+    <table>${attrs}</table>
+    ${atts}`;
+}
+
+function escapeHtml(s){return s.replace(/[&<>]/g, c=>({ '&':'&amp;','<':'&lt;','>':'&gt;' }[c]));}
+
+$('q').addEventListener('input', renderReqs);
+$('refresh').onclick = () => selectDoc(currentDoc);
+$('upload').onclick = async () => {
+  const fl = $('files').files;
+  if (!fl.length) { $('msg').textContent = 'выберите файлы'; return; }
+  const fd = new FormData();
+  for (const f of fl) fd.append('files', f);
+  $('msg').textContent = 'загрузка…';
+  try {
+    const res = await j('/documents/batch', {method:'POST', body: fd});
+    $('msg').textContent = 'готово: '+res.documents.length+' док.';
+    currentDoc = res.documents[0] && res.documents[0].id;
+    await selectDoc(currentDoc);
+  } catch(e) { $('msg').textContent = e.message; }
+};
+const drop = $('drop');
+drop.addEventListener('dragover', e => { e.preventDefault(); drop.classList.add('over'); });
+drop.addEventListener('dragleave', () => drop.classList.remove('over'));
+drop.addEventListener('drop', e => {
+  e.preventDefault(); drop.classList.remove('over');
+  $('files').files = e.dataTransfer.files;
+});
+
+loadDocs().then(() => { if (docs[0]) selectDoc(docs[0].id); });
+</script>
+</body>
+</html>

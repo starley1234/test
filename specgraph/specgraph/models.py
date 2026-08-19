@@ -34,6 +34,7 @@ class DocumentKind(str, enum.Enum):
     DOC = "doc"
     MACRO_DOC = "macro_doc"  # .docm / документ со скриптами
     PARSED_JSON = "parsed_json"
+    XLSX = "xlsx"
     OTHER = "other"
 
 
@@ -129,7 +130,7 @@ class Requirement(Base):
     document_id: Mapped[int] = mapped_column(ForeignKey("documents.id"))
     product_id: Mapped[int | None] = mapped_column(ForeignKey("products.id"), nullable=True)
     parent_id: Mapped[int | None] = mapped_column(ForeignKey("requirements.id"), nullable=True)
-    code: Mapped[str] = mapped_column(String(128), index=True)
+    code: Mapped[str] = mapped_column(String(256), index=True)
     title: Mapped[str | None] = mapped_column(String(512), nullable=True)
     text: Mapped[str] = mapped_column(Text)
     kind: Mapped[RequirementKind] = mapped_column(Enum(RequirementKind), default=RequirementKind.UNKNOWN)
@@ -185,6 +186,21 @@ class EntityRelation(Base):
     dst_type: Mapped[EntityType] = mapped_column(Enum(EntityType))
     dst_id: Mapped[int] = mapped_column(Integer, index=True)
     weight: Mapped[float] = mapped_column(Float, default=1.0)
+    extra: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+
+
+class Attachment(Base):
+    """Файл-приложение к требованию (записка, xlsx)."""
+
+    __tablename__ = "attachments"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    document_id: Mapped[int] = mapped_column(ForeignKey("documents.id"))
+    requirement_id: Mapped[int | None] = mapped_column(ForeignKey("requirements.id"), nullable=True)
+    code: Mapped[str | None] = mapped_column(String(256), index=True, nullable=True)
+    filename: Mapped[str] = mapped_column(String(512))
+    storage_path: Mapped[str] = mapped_column(String(1024))
+    text_content: Mapped[str | None] = mapped_column(Text, nullable=True)
     extra: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
 
