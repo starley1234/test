@@ -409,7 +409,7 @@ def start_named_run(name: str, body: PipelineRequest, user: User | None = Depend
     if name.startswith("_") or name not in _catalog():
         raise HTTPException(404, f"unknown pipeline: {name}")
     _need_pipe(name, user)
-    job = start_job(name, body.model_dump(), user_id=user.id if user else None)
+    job = start_job(name, body.model_dump(exclude_none=True), user_id=user.id if user else None)
     return {"run_id": job.id, "name": name}
 
 
