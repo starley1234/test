@@ -1,0 +1,139 @@
+import sys
+import os
+import re
+import uvicorn
+from io import BytesIO
+from typing import List, Any
+
+from fastapi import FastAPI, UploadFile, File, HTTPException
+from mcp.server.fastmcp import FastMCP
+from docx import Document
+from docx.table import Table
+from docx.text.paragraph import Paragraph
+from pydantic import BaseModel
+from natasha import (
+    Segmenter, MorphVocab, NewsEmbedding, 
+    NewsMorphTagger, NewsNERTagger, Doc
+)
+
+# --- Инициализация Natasha NER ---
+segmenter = Segmenter()
+morph_vocab = MorphVocab()
+emb = NewsEmbedding()
+ner_tagger = NewsNERTagger(emb)
+
+# --- Инициализация MCP ---
+mcp = FastMCP("DocExtractor")
+
+# --- Модели данных ---
+class Entity(BaseModel):
+    text: str
+    label: str
+
+class ExtractionItem(BaseModel):
+    type: str
+    content: Any
+    entities: List[Entity]
+
+class FinalResponse(BaseModel):
+    filename: str
+    document_structure: List[ExtractionItem]
+
+# --- Логика обработки документа ---
+def get_entities(text: str) -> List[Entity]:
+    if not text or not text.strip(): return []
+    doc = Doc(text)
+    doc.segment(segmenter)
+    doc.tag_ner(ner_tagger)
+    results = [Entity(text=span.text, label=span.type) for span in doc.spans]
+    tech_patterns = {
+        "VOLTAGE": r"\b\d+[VВ][т]?\b",
+        "INTERFACE": r"\b(RS-?\d{3}|Ethernet|USB|HDMI|Wi-Fi|Bluetooth)\b",
+        "IP_CLASS": r"\bIP[0-9]{2}\b",
+        "STANDARDS": r"\b(ГОСТ|ISO|IEC)\b"
+    }
+    for label, pattern in tech_patterns.items():
+        for m in re.finditer(pattern, text, re.IGNORECASE):
+            results.append(Entity(text=m.group(), label=label))
+    return results
+
+def parse_table_smart(table: Table) -> List[List[str]]:
+    table_data = []
+    for row in table.rows:
+        row_cells_text = []
+        prev_cell_id = None
+        for cell in row.cells:
+            current_cell_id = cell._tc
+            if current_cell_id == prev_cell_id:
+                row_cells_text.append("") 
+            else:
+                cell_text = "\n".join([p.text.strip() for p in cell.paragraphs if p.text.strip()])
+                row_cells_text.append(cell_text)
+            prev_cell_id = current_cell_id
+        table_data.append(row_cells_text)
+    return table_data
+
+def process_document(doc: Document) -> List[ExtractionItem]:
+    structure = []
+    for element in doc.element.body:
+        if isinstance(element, Paragraph) or element.tag.endswith('p'):
+            para = Paragraph(element, doc)
+            text = para.text.strip()
+            if text:
+                structure.append(ExtractionItem(type="paragraph", content=text, entities=get_entities(text)))
+        elif isinstance(element, Table) or element.tag.endswith('tbl'):
+            tbl = Table(element, doc)
+            table_rows = parse_table_smart(tbl)
+            if table_rows:
+                all_text = " ".join([txt for row in table_rows for txt in row if txt])
+                structure.append(ExtractionItem(type="table", content=table_rows, entities=get_entities(all_text)))
+    return structure
+
+# --- MCP Tool ---
+@mcp.tool()
+def extract_from_local_file(file_path: str) -> str:
+    """Извлекает текст и сущности из локального .docx/.docm файла."""
+    if not os.path.exists(file_path): return f"Файл {file_path} не найден."
+    try:
+        with open(file_path, "rb") as f:
+            doc = Document(BytesIO(f.read()))
+        data = process_document(doc)
+        return "\n\n".join([f"[{i.type.upper()}] {str(i.content)[:150]}..." for i in data])
+    except Exception as e: return f"Ошибка: {str(e)}"
+
+# --- Создание FastAPI приложения ---
+app = FastAPI(title="Unified DocExtractor")
+
+@app.post("/extract", response_model=FinalResponse)
+async def extract_api(file: UploadFile = File(...)):
+    if not file.filename.lower().endswith(('.docm', '.docx')):
+        raise HTTPException(status_code=400, detail="Use .docm or .docx")
+    try:
+        content = await file.read()
+        doc = Document(BytesIO(content))
+        return FinalResponse(filename=file.filename, document_structure=process_document(doc))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# --- Интеграция MCP SSE в FastAPI ---
+from mcp.server.sse import SseServerTransport
+
+# Создаем транспорт для SSE
+sse = SseServerTransport("/messages")
+
+@app.get("/sse")
+async def handle_sse(request: Any):
+    async with sse.connect_sse(request.scope, request.receive, request._send) as (read_stream, write_stream):
+        await mcp.server.run(read_stream, write_stream, mcp.server.create_initialization_options())
+
+@app.post("/messages")
+async def handle_messages(request: Any):
+    await sse.handle_post_request(request.scope, request.receive, request._send)
+
+# --- Запуск ---
+if __name__ == "__main__":
+    if len(sys.argv) > 1 and sys.argv[1] == "mcp":
+        mcp.run(transport="stdio")
+    else:
+        print("Запуск на порту 8000. API: /extract, MCP SSE: /sse")
+        uvicorn.run(app, host="0.0.0.0", port=8000)
