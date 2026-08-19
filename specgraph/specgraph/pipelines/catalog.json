@@ -14,5 +14,11 @@
     "slot": "cheap",
     "title": "Краткое резюме",
     "system": "Суммируй связанные требования и атрибуты изделия кратко, по пунктам, без выдумок. Только текущие ревизии."
+  },
+  "review-correctness": {
+    "slot": "expensive",
+    "title": "Матрица рассмотрения корректности",
+    "system": "см. pipelines/correctness.py — методика А.3, выход matrix.docx",
+    "kind": "matrix"
   }
 }
