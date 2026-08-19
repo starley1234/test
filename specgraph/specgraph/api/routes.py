@@ -212,3 +212,53 @@ def pipeline_summarize(body: PipelineRequest, db: Session = Depends(get_db)):
     from specgraph.pipelines.graphs import summarize_context
 
     return summarize_context(db, **body.model_dump())
+
+
+@router.post("/pipelines/review-correctness")
+def pipeline_correctness(body: PipelineRequest, db: Session = Depends(get_db)):
+    from specgraph.pipelines.correctness import run_correctness_matrix
+
+    return run_correctness_matrix(db, document_id=body.document_id, product_id=body.product_id)
+
+
+@router.post("/pipelines/{name}")
+def run_named_pipeline(name: str, body: PipelineRequest, db: Session = Depends(get_db)):
+    from specgraph.pipelines.graphs import run_pipeline
+
+    try:
+        return run_pipeline(name, db, **body.model_dump())
+    except KeyError:
+        raise HTTPException(404, f"unknown pipeline: {name}") from None
+
+
+@router.get("/exports/{filename}")
+def download_export(filename: str):
+    from specgraph.pipelines.correctness import EXPORTS
+
+    path = EXPORTS / Path(filename).name
+    if not path.is_file():
+        raise HTTPException(404, "file not found")
+    return FileResponse(path, filename=path.name)
+
+
+@router.get("/requirements/{req_id}/revisions")
+def list_revisions(req_id: int, db: Session = Depends(get_db)):
+    from specgraph.models import RequirementRevision
+
+    rows = (
+        db.query(RequirementRevision)
+        .filter(RequirementRevision.requirement_id == req_id)
+        .order_by(RequirementRevision.id.desc())
+        .all()
+    )
+    return [
+        {
+            "id": x.id,
+            "code": x.code,
+            "revision": x.revision,
+            "text": x.text,
+            "attributes": x.attributes,
+            "superseded_at": x.superseded_at.isoformat() if x.superseded_at else None,
+        }
+        for x in rows
+    ]

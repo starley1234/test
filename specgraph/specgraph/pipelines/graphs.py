@@ -126,6 +126,10 @@ def run_pipeline(name: str, db: Session, **kwargs) -> dict[str, Any]:
     entry = _catalog().get(name)
     if not entry or name.startswith("_"):
         raise KeyError(name)
+    if entry.get("kind") == "matrix" or name == "review-correctness":
+        from specgraph.pipelines.correctness import run_correctness_matrix
+
+        return run_correctness_matrix(db, **kwargs)
     app = _compile(entry["system"], db, slot=entry.get("slot") or "expensive")
     out = app.invoke({"query": kwargs.get("query") or entry.get("title") or name, **kwargs})
     result = out["result"]

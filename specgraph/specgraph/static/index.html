@@ -143,6 +143,18 @@ function escapeHtml(s){return s.replace(/[&<>]/g, c=>({ '&':'&amp;','<':'&lt;','
 
 $('q').addEventListener('input', renderReqs);
 $('refresh').onclick = () => selectDoc(currentDoc);
+$('matrix').onclick = async () => {
+  $('msg').textContent = 'матрица…';
+  try {
+    const body = { document_id: currentDoc };
+    const res = await j('/pipelines/review-correctness', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(body),
+    });
+    $('msg').innerHTML = (res.result||'готово')+' · '+res.count+' тр. · <a href="'+(res.download||'#')+'" style="color:#3d9cf0">скачать docx</a>';
+  } catch(e) { $('msg').textContent = e.message; }
+};
 $('upload').onclick = async () => {
   const fl = $('files').files;
   if (!fl.length) { $('msg').textContent = 'выберите файлы'; return; }
