@@ -70,6 +70,8 @@
     <div class="bar">
       <button class="ghost" id="matrix">Матрица корректности</button>
       <button class="ghost" id="unittests">Модульные тесты</button>
+      <button class="ghost" id="scheme">Схема → покрытие</button>
+      <input id="schemeFile" type="file" accept="image/*,.pdf" hidden />
     </div>
   </header>
   <div class="layout">
@@ -319,6 +321,29 @@ $('matrix').onclick = async () => {
     });
     $('msg').innerHTML = (res.result||'готово')+' · <a href="'+(res.download||'#')+'" style="color:#3d9cf0">скачать</a>';
   } catch(e) { $('msg').textContent = e.message; }
+};
+$('scheme').onclick = () => $('schemeFile').click();
+$('schemeFile').onchange = async () => {
+  const f = $('schemeFile').files[0];
+  if (!f) return;
+  $('msg').textContent = 'разбор схемы…';
+  const fd = new FormData();
+  fd.append('file', f);
+  if (currentDoc) fd.append('document_id', currentDoc);
+  try {
+    const res = await fetch('/pipelines/schematic-coverage', {method:'POST', body: fd});
+    if (!res.ok) throw new Error(await res.text());
+    const data = await res.json();
+    const cov = data.coverage || {};
+    const miss = (cov.missing||[]).map(m => m.name || m.node_id).join(', ') || 'нет';
+    $('msg').innerHTML = 'покрытие '+ (cov.coverage??0) +'% · не покрыто: '+esc(miss)+
+      ' · <a href="'+(data.download||'#')+'" style="color:#3d9cf0">отчёт</a>';
+    const nodes = ((data.scheme||{}).nodes||[]).map(n =>
+      `<div class="rel">${esc(n.id)} — ${esc(n.name)}</div>`).join('');
+    $('card').innerHTML = `<h2>Функциональная схема</h2>${nodes || '<div class="muted">узлов нет</div>'}
+      <pre>${esc(JSON.stringify(cov.rows||[], null, 2).slice(0,4000))}</pre>`;
+  } catch(e) { $('msg').textContent = e.message; }
+  $('schemeFile').value = '';
 };
 $('unittests').onclick = async () => {
   $('msg').textContent = 'тесты…';

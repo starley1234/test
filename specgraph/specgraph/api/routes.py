@@ -2,7 +2,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from sqlalchemy.orm import Session, joinedload
 
 from specgraph.api.schemas import DocumentOut, IngestJsonRequest, PipelineRequest, ProductOut, RetrievalRequest
@@ -273,6 +273,23 @@ def pipeline_unit_tests(body: PipelineRequest, db: Session = Depends(get_db)):
     )
 
 
+@router.post("/pipelines/schematic-coverage")
+async def pipeline_schematic(
+    file: UploadFile = File(...),
+    document_id: int | None = None,
+    db: Session = Depends(get_db),
+):
+    from specgraph.pipelines.schematic import run_schematic_coverage
+
+    name = Path(file.filename or "scheme.bin").name
+    tmp = settings.upload_dir / f"scheme_{uuid4().hex}_{name}"
+    tmp.write_bytes(await file.read())
+    try:
+        return run_schematic_coverage(db, tmp, name, document_id=document_id)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
 @router.post("/pipelines/{name}")
 def run_named_pipeline(name: str, body: PipelineRequest, db: Session = Depends(get_db)):
     from specgraph.pipelines.graphs import run_pipeline
@@ -285,10 +302,13 @@ def run_named_pipeline(name: str, body: PipelineRequest, db: Session = Depends(g
 
 @router.get("/exports/{filename}")
 def download_export(filename: str):
-    from specgraph.pipelines.correctness import EXPORTS
+    from specgraph.pipelines.correctness import EXPORTS as C_EX
+    from specgraph.pipelines.schematic import EXPORTS as S_EX
+    from specgraph.pipelines.unit_tests import EXPORTS as U_EX
 
-    path = EXPORTS / Path(filename).name
-    if not path.is_file():
+    name = Path(filename).name
+    path = next((p for p in (C_EX / name, S_EX / name, U_EX / name) if p.is_file()), None)
+    if not path:
         raise HTTPException(404, "file not found")
     return FileResponse(path, filename=path.name)
 

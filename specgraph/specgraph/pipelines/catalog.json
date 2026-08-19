@@ -26,5 +26,11 @@
     "title": "Модульные тесты (Excel + прогон)",
     "system": "см. pipelines/unit_tests.py — шаблон result.xlsx",
     "kind": "unit-xlsx"
+  },
+  "schematic-coverage": {
+    "slot": "vlm",
+    "title": "Схема → ФС → покрытие требованиями",
+    "system": "см. pipelines/schematic.py",
+    "kind": "schematic"
   }
 }

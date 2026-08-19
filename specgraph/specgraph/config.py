@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     embed_api_key: str = ""
     embed_model: str = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
+    # 4. VLM — разбор принципиальных схем (картинка / страница PDF)
+    vlm_base_url: str = ""
+    vlm_api_key: str = ""
+    vlm_model: str = "gpt-4o"
+
     openai_api_key: str = ""
     openai_model: str = ""
     embedding_model: str = ""
@@ -41,6 +46,13 @@ class Settings(BaseSettings):
     def embed(self) -> tuple[str, str, str]:
         model = self.embed_model or self.embedding_model or "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
         return self.embed_base_url, self.embed_api_key, model
+
+    def vlm(self) -> tuple[str, str, str]:
+        e_base, e_key, e_model = self.expensive()
+        base = self.vlm_base_url or e_base
+        key = self.vlm_api_key or e_key
+        model = self.vlm_model or e_model or "gpt-4o"
+        return base, key, model
 
 
 settings = Settings()

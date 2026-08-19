@@ -16,3 +16,8 @@ def test_three_model_slots(monkeypatch):
     assert s.cheap() == ("http://cheap.local/v1", "ck", "small-1")
     assert s.expensive() == ("http://dear.local/v1", "ek", "big-1")
     assert s.embed() == ("http://emb.local/v1", "bk", "emb-1")
+    monkeypatch.setenv("VLM_BASE_URL", "http://vlm.local/v1")
+    monkeypatch.setenv("VLM_API_KEY", "vk")
+    monkeypatch.setenv("VLM_MODEL", "vision-1")
+    s2 = Settings()
+    assert s2.vlm() == ("http://vlm.local/v1", "vk", "vision-1")

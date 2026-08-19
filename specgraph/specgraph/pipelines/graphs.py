@@ -134,6 +134,10 @@ def run_pipeline(name: str, db: Session, **kwargs) -> dict[str, Any]:
         from specgraph.pipelines.unit_tests import run_unit_tests
 
         return run_unit_tests(db, **kwargs)
+    if entry.get("kind") == "schematic" or name == "schematic-coverage":
+        from specgraph.pipelines.schematic import run_schematic_coverage
+
+        return run_schematic_coverage(db, **kwargs)
     app = _compile(entry["system"], db, slot=entry.get("slot") or "expensive")
     out = app.invoke({"query": kwargs.get("query") or entry.get("title") or name, **kwargs})
     result = out["result"]
