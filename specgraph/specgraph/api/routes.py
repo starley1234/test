@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from specgraph.api.schemas import DocumentOut, IngestJsonRequest, PipelineRequest, ProductOut, RetrievalRequest
 from specgraph.config import settings
-from specgraph.db import get_db
+from specgraph.db import get_db, wipe_db
 from specgraph.ingest.ids import base_code
 from specgraph.ingest.pipeline import ingest_file, ingest_many, ingest_parsed_json
 from specgraph.models import Attachment, Document, EntityRelation, EntityType, Illustration, Product, RelationType, Requirement
@@ -32,6 +32,12 @@ async def upload_document(file: UploadFile = File(...), db: Session = Depends(ge
     except Exception as exc:  # noqa: BLE001
         raise HTTPException(400, f"ingest failed: {exc}") from exc
     return DocumentOut(id=doc.id, filename=doc.filename, kind=doc.kind.value, title=doc.title, status=doc.status)
+
+
+@router.post("/db/wipe")
+def wipe_database():
+    wipe_db()
+    return {"ok": True, "cleared": True}
 
 
 @router.get("/overview")
@@ -151,7 +157,52 @@ def get_product(product_id: int, db: Session = Depends(get_db)):
     sg = expand_product(db, product_id)
     if not sg:
         raise HTTPException(404)
+    p = db.get(Product, product_id)
+    if p:
+        sg["document_id"] = p.document_id
+        doc = db.get(Document, p.document_id)
+        if doc:
+            sg["document"] = {"id": doc.id, "filename": doc.filename, "title": doc.title, "status": doc.status}
     return sg
+
+
+@router.get("/products/{product_id}/documents")
+def product_documents(product_id: int, db: Session = Depends(get_db)):
+    """Документы, связанные с изделием: свой документ + документы требований этого изделия / того же кода."""
+    p = db.get(Product, product_id)
+    if not p:
+        raise HTTPException(404)
+    ids: set[int] = set()
+    if p.document_id:
+        ids.add(p.document_id)
+    same = db.query(Product).filter(Product.code == p.code).all()
+    for s in same:
+        if s.document_id:
+            ids.add(s.document_id)
+    reqs = db.query(Requirement).filter(
+        Requirement.is_current.is_(True),
+        (Requirement.product_id == product_id) | (Requirement.product_id.in_([s.id for s in same])),
+    ).all()
+    for r in reqs:
+        if r.document_id:
+            ids.add(r.document_id)
+    docs = db.query(Document).filter(Document.id.in_(ids)).order_by(Document.id.desc()).all() if ids else []
+    out = []
+    for d in docs:
+        n_r = db.query(Requirement).filter(Requirement.document_id == d.id, Requirement.is_current.is_(True)).count()
+        n_p = db.query(Product).filter(Product.document_id == d.id).count()
+        out.append(
+            {
+                "id": d.id,
+                "filename": d.filename,
+                "title": d.title,
+                "status": d.status,
+                "kind": d.kind.value if d.kind else None,
+                "counts": {"requirements": n_r, "products": n_p},
+                "own": d.id == p.document_id,
+            }
+        )
+    return {"product": {"id": p.id, "code": p.code, "name": p.name}, "documents": out}
 
 
 def _req_dump(r: Requirement) -> dict:

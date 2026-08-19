@@ -66,3 +66,12 @@ def init_db() -> None:
 
     Base.metadata.create_all(bind=engine)
     log.info("БД готова: %s", settings.database_url)
+
+
+def wipe_db() -> None:
+    """Удаляет все таблицы и создаёт их заново. Файлы в uploads не трогаем."""
+    from specgraph import models  # noqa: F401
+
+    Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
+    log.warning("БД очищена: %s", settings.database_url)

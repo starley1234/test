@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>SpecGraph — база требований</title>
+  <title>SpecGraph</title>
   <style>
     :root {
       --bg: #0e1218; --panel: #161c24; --line: #2a3442;
@@ -12,18 +12,28 @@
     }
     * { box-sizing: border-box; }
     body { margin: 0; font: 14px/1.45 "IBM Plex Sans", "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--text); }
-    header { padding: 14px 20px; border-bottom: 1px solid var(--line); display: flex; gap: 16px; align-items: center; justify-content: space-between; }
+    header { padding: 12px 20px; border-bottom: 1px solid var(--line); display: flex; gap: 16px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
     header h1 { font-size: 18px; margin: 0; }
     header .sub { color: var(--muted); font-size: 13px; }
-    .bar { display: flex; gap: 8px; flex-wrap: wrap; }
-    button, .btn { background: var(--acc); color: #041018; border: 0; border-radius: 8px; padding: 8px 14px; font-weight: 600; cursor: pointer; }
+    nav { display: flex; gap: 4px; flex-wrap: wrap; }
+    nav a { color: var(--muted); text-decoration: none; padding: 6px 10px; border-radius: 8px; }
+    nav a.on, nav a:hover { background: #1f2833; color: var(--text); }
+    .bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    button, .btn { background: var(--acc); color: #041018; border: 0; border-radius: 8px; padding: 8px 14px; font-weight: 600; cursor: pointer; font-size: 13px; }
     button:disabled { opacity: .45; cursor: not-allowed; }
     button.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); }
-    .layout { display: grid; grid-template-columns: 340px 1fr 360px; height: calc(100vh - 56px); }
+    button.danger { background: transparent; color: var(--bad); border: 1px solid #5a2a30; }
+    .layout { display: grid; grid-template-columns: 340px 1fr 360px; height: calc(100vh - 58px); }
+    .page { display: none; min-height: calc(100vh - 58px); }
+    .page.on { display: block; }
+    .page.browse { padding: 20px 24px 40px; max-width: 980px; }
     .col { overflow: auto; border-right: 1px solid var(--line); padding: 16px; }
     .col:last-child { border-right: 0; }
     h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin: 18px 0 8px; }
     h2:first-child { margin-top: 0; }
+    h3 { font-size: 20px; margin: 0 0 6px; }
+    .crumbs { color: var(--muted); font-size: 13px; margin-bottom: 14px; }
+    .crumbs a { color: var(--acc); text-decoration: none; }
     .drop {
       border: 1.5px dashed var(--line); border-radius: 12px; padding: 22px 14px;
       text-align: center; color: var(--muted); background: #12181f; cursor: pointer;
@@ -46,6 +56,8 @@
     .item { padding: 8px 10px; border-radius: 8px; cursor: pointer; margin-bottom: 4px; animation: pop .25s ease; }
     .item:hover, .item.on { background: #1f2833; }
     .item.new { outline: 1px solid #3d9cf055; }
+    .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; margin-bottom: 10px; }
+    .card a { color: var(--acc); text-decoration: none; }
     .code { font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--acc); }
     .feed { font-size: 12px; }
     .feed .ev { padding: 6px 0; border-bottom: 1px solid #1e2630; color: var(--muted); }
@@ -54,7 +66,7 @@
     .progress > i { display: block; height: 100%; background: var(--acc); width: 0; transition: width .2s; }
     pre { white-space: pre-wrap; background: #12181f; padding: 10px; border-radius: 8px; font-size: 13px; }
     table { width: 100%; border-collapse: collapse; font-size: 13px; }
-    td, th { border-bottom: 1px solid var(--line); padding: 5px 4px; vertical-align: top; text-align: left; }
+    td, th { border-bottom: 1px solid var(--line); padding: 6px 4px; vertical-align: top; text-align: left; }
     .muted { color: var(--muted); }
     .rel { font-size: 12px; color: var(--muted); margin: 4px 0; }
     input[type=search] { width: 100%; background: #12181f; color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
@@ -65,51 +77,240 @@
   <header>
     <div>
       <h1>SpecGraph</h1>
-      <div class="sub">положите файлы → Индексировать → смотрите, как появляются сущности</div>
+      <div class="sub">индексация спецификаций и просмотр графа</div>
     </div>
+    <nav>
+      <a href="#/" id="nav-index">Индекс</a>
+      <a href="#/products" id="nav-products">Изделия</a>
+      <a href="#/documents" id="nav-documents">Документы</a>
+    </nav>
     <div class="bar">
-      <button class="ghost" id="matrix">Матрица корректности</button>
-      <button class="ghost" id="unittests">Модульные тесты</button>
-      <button class="ghost" id="scheme">Схема → покрытие</button>
+      <button class="ghost" id="matrix">Матрица</button>
+      <button class="ghost" id="unittests">Тесты</button>
+      <button class="ghost" id="scheme">Схема</button>
+      <button class="danger" id="wipeBtn">Очистить БД</button>
       <input id="schemeFile" type="file" accept="image/*,.pdf" hidden />
     </div>
   </header>
-  <div class="layout">
-    <div class="col">
-      <h2>Файлы в пакет</h2>
-      <div class="drop" id="drop">
-        <b>Перетащите сюда Word / Excel / JSON</b>
-        спецификация и вложения к требованиям
-        <div style="margin-top:10px"><input id="files" type="file" multiple /></div>
+
+  <div class="page" id="page-index">
+    <div class="layout">
+      <div class="col">
+        <h2>Файлы в пакет</h2>
+        <div class="drop" id="drop">
+          <b>Перетащите сюда Word / Excel / JSON</b>
+          спецификация и вложения к требованиям
+          <div style="margin-top:10px"><input id="files" type="file" multiple /></div>
+        </div>
+        <div class="queue" id="queue"></div>
+        <div style="margin:12px 0; display:flex; gap:8px">
+          <button id="indexBtn">Индексировать</button>
+          <button class="ghost" id="clearBtn">Очистить список</button>
+        </div>
+        <div class="progress"><i id="bar"></i></div>
+        <div class="muted" id="msg">ожидание файлов</div>
+        <h2>Ход индексации</h2>
+        <div class="feed" id="feed"></div>
       </div>
-      <div class="queue" id="queue"></div>
-      <div style="margin:12px 0; display:flex; gap:8px">
-        <button id="indexBtn">Индексировать</button>
-        <button class="ghost" id="clearBtn">Очистить список</button>
+      <div class="col">
+        <h2>База</h2>
+        <div class="stat" id="stats"></div>
+        <h2>Появившиеся сущности</h2>
+        <input type="search" id="q" placeholder="фильтр по коду или тексту…" />
+        <div id="reqs" style="margin-top:10px"></div>
       </div>
-      <div class="progress"><i id="bar"></i></div>
-      <div class="muted" id="msg">ожидание файлов</div>
-      <h2>Ход индексации</h2>
-      <div class="feed" id="feed"></div>
-    </div>
-    <div class="col">
-      <h2>База</h2>
-      <div class="stat" id="stats"></div>
-      <h2>Появившиеся сущности</h2>
-      <input type="search" id="q" placeholder="фильтр по коду или тексту…" />
-      <div id="reqs" style="margin-top:10px"></div>
-    </div>
-    <div class="col">
-      <h2>Карточка</h2>
-      <div id="card" class="muted">Выберите требование справа</div>
-      <h2>Документы</h2>
-      <div id="docs"></div>
+      <div class="col">
+        <h2>Карточка</h2>
+        <div id="card" class="muted">Выберите требование</div>
+        <h2>Документы</h2>
+        <div id="docs"></div>
+      </div>
     </div>
   </div>
+
+  <div class="page browse" id="page-browse"></div>
+
 <script>
 const $ = (id) => document.getElementById(id);
-let bag = []; // File[]
+let bag = [];
 let docs = [], reqs = [], currentDoc = null, seen = new Set();
+
+function esc(s){return String(s||'').replace(/[&<>]/g,c=>({ '&':'&amp;','<':'&lt;','>':'&gt;' }[c]));}
+async function j(url, opt) {
+  const r = await fetch(url, opt);
+  if (!r.ok) throw new Error(await r.text());
+  return r.json();
+}
+
+function parseHash() {
+  const h = (location.hash || '#/').replace(/^#/, '') || '/';
+  const parts = h.split('/').filter(Boolean);
+  return { parts, raw: h };
+}
+
+function setNav() {
+  const p = parseHash().parts[0] || '';
+  ['index','products','documents'].forEach(k => {
+    const el = $('nav-'+k);
+    if (el) el.classList.toggle('on', (k==='index' && !p) || p === k);
+  });
+}
+
+async function route() {
+  setNav();
+  const { parts } = parseHash();
+  const a = parts[0];
+  if (!a) {
+    $('page-index').classList.add('on');
+    $('page-browse').classList.remove('on');
+    return;
+  }
+  $('page-index').classList.remove('on');
+  $('page-browse').classList.add('on');
+  const box = $('page-browse');
+  box.innerHTML = '<div class="muted">загрузка…</div>';
+  try {
+    if (a === 'products' && parts[1] && parts[2] === 'docs') {
+      await renderProductDocs(box, +parts[1]);
+    } else if (a === 'products' && parts[1]) {
+      await renderProduct(box, +parts[1]);
+    } else if (a === 'products') {
+      await renderProducts(box);
+    } else if (a === 'documents' && parts[1] && parts[2] === 'requirements') {
+      await renderDocReqs(box, +parts[1]);
+    } else if (a === 'documents' && parts[1]) {
+      await renderDocument(box, +parts[1]);
+    } else if (a === 'documents') {
+      await renderDocuments(box);
+    } else if (a === 'requirements' && parts[1]) {
+      await renderReqPage(box, +parts[1]);
+    } else {
+      box.innerHTML = '<div class="muted">нет такой страницы</div>';
+    }
+  } catch (e) {
+    box.innerHTML = '<div class="muted">'+esc(e.message)+'</div>';
+  }
+}
+
+async function renderProducts(box) {
+  const list = await j('/products');
+  box.innerHTML = `
+    <div class="crumbs"><a href="#/">Индекс</a> / Изделия</div>
+    <h3>Изделия</h3>
+    <p class="muted">${list.length} шт.</p>
+    ${list.map(p => `
+      <div class="card">
+        <a class="code" href="#/products/${p.id}">${esc(p.code)}</a>
+        <div>${esc(p.name)}</div>
+        <div class="muted">уровень ${p.level}${p.parent_id ? ' · parent #'+p.parent_id : ''}</div>
+      </div>`).join('') || '<div class="muted">нет изделий — проиндексируйте пакет</div>'}`;
+}
+
+async function renderProduct(box, id) {
+  const sg = await j('/products/'+id);
+  const p = sg.product || {};
+  const attrs = Object.entries(p.attributes||{}).map(([k,v]) => `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join('');
+  const anc = (sg.ancestors||[]).slice().reverse().map(a =>
+    `<a href="#/products/${a.id}">${esc(a.code)}</a>`).join(' / ');
+  const kids = (sg.descendants||[]).map(c =>
+    `<div class="item" onclick="location.hash='#/products/${c.id}'"><span class="code">${esc(c.code)}</span> ${esc(c.name)}</div>`).join('');
+  const reqsH = (sg.requirements||[]).map(r =>
+    `<div class="item" onclick="location.hash='#/requirements/${r.id}'"><span class="code">${esc(r.code)}</span> ${esc((r.text||'').slice(0,140))}</div>`).join('');
+  const doc = sg.document;
+  box.innerHTML = `
+    <div class="crumbs"><a href="#/">Индекс</a> / <a href="#/products">Изделия</a> / ${esc(p.code||'')}</div>
+    <h3>${esc(p.name||p.code||'Изделие')}</h3>
+    <div class="code">${esc(p.code)}</div>
+    ${anc ? '<div class="rel">входит в: '+anc+'</div>' : ''}
+    ${doc ? `<div class="rel">документ: <a href="#/documents/${doc.id}">${esc(doc.title||doc.filename)}</a></div>` : ''}
+    <p><a href="#/products/${id}/docs">Связанные документы →</a></p>
+    ${attrs ? '<h2>Атрибуты</h2><table>'+attrs+'</table>' : ''}
+    <h2>Состав</h2>${kids || '<div class="muted">нет дочерних</div>'}
+    <h2>Требования</h2>${reqsH || '<div class="muted">нет</div>'}`;
+}
+
+async function renderProductDocs(box, id) {
+  const data = await j('/products/'+id+'/documents');
+  const p = data.product || {};
+  box.innerHTML = `
+    <div class="crumbs"><a href="#/products">Изделия</a> / <a href="#/products/${id}">${esc(p.code)}</a> / Документы</div>
+    <h3>Документы изделия ${esc(p.code)}</h3>
+    <p class="muted">${esc(p.name||'')}</p>
+    ${(data.documents||[]).map(d => `
+      <div class="card">
+        <a href="#/documents/${d.id}">${esc(d.title || d.filename)}</a>
+        ${d.own ? ' <span class="tag spec">свой</span>' : ''}
+        <div class="muted">${esc(d.filename)} · треб. ${d.counts.requirements} · изд. ${d.counts.products}</div>
+        <div style="margin-top:6px"><a href="#/documents/${d.id}/requirements">требования документа</a></div>
+      </div>`).join('') || '<div class="muted">нет связанных документов</div>'}`;
+}
+
+async function renderDocuments(box) {
+  const list = await j('/documents');
+  box.innerHTML = `
+    <div class="crumbs"><a href="#/">Индекс</a> / Документы</div>
+    <h3>Документы</h3>
+    <p class="muted">${list.length} шт.</p>
+    ${list.map(d => `
+      <div class="card">
+        <a href="#/documents/${d.id}">${esc(d.title || d.filename)}</a>
+        <div class="muted">${esc(d.filename)} · ${esc(d.status)} · ${esc(d.kind||'')}</div>
+      </div>`).join('') || '<div class="muted">нет документов</div>'}`;
+}
+
+async function renderDocument(box, id) {
+  const d = await j('/documents/'+id);
+  const c = d.counts || {};
+  const prods = (d.products||[]).map(p =>
+    `<div class="item" onclick="location.hash='#/products/${p.id}'"><span class="code">${esc(p.code)}</span> ${esc(p.name)}</div>`).join('');
+  box.innerHTML = `
+    <div class="crumbs"><a href="#/documents">Документы</a> / ${esc(d.filename)}</div>
+    <h3>${esc(d.title || d.filename)}</h3>
+    <div class="muted">${esc(d.filename)} · ${esc(d.status)} · ${esc(d.kind||'')}</div>
+    <div class="stat" style="margin:14px 0">
+      <div><b>${c.products||0}</b><span class="muted">изделия</span></div>
+      <div><b>${c.requirements||0}</b><span class="muted">треб.</span></div>
+      <div><b>${c.attachments||0}</b><span class="muted">влож.</span></div>
+      <div><b>${c.illustrations||0}</b><span class="muted">рис.</span></div>
+    </div>
+    <p><a href="#/documents/${id}/requirements">Требования документа →</a></p>
+    <h2>Изделия в документе</h2>
+    ${prods || '<div class="muted">нет</div>'}`;
+}
+
+async function renderDocReqs(box, id) {
+  const [d, list] = await Promise.all([j('/documents/'+id), j('/requirements?document_id='+id)]);
+  box.innerHTML = `
+    <div class="crumbs"><a href="#/documents">Документы</a> / <a href="#/documents/${id}">${esc(d.filename)}</a> / Требования</div>
+    <h3>Требования документа</h3>
+    <p class="muted">${list.length} шт. · ${esc(d.title || d.filename)}</p>
+    ${list.map(r => `
+      <div class="card">
+        <a class="code" href="#/requirements/${r.id}">${esc(r.code)}</a>
+        ${r.revision?'<span class="tag">rev '+esc(r.revision)+'</span>':''}
+        ${r.extra&&r.extra.stub?'<span class="tag stub">stub</span>':''}
+        <div>${esc((r.text||'').slice(0,280))}</div>
+      </div>`).join('') || '<div class="muted">требований нет</div>'}`;
+}
+
+async function renderReqPage(box, id) {
+  const r = await j('/requirements/'+id);
+  const attrs = Object.entries(r.attributes||{}).map(([k,v]) =>
+    `<tr><th>${esc(k)}</th><td>${esc(String(v).slice(0,4000))}</td></tr>`).join('');
+  const parents = (r.parents||[]).map(p =>
+    `<div class="rel">↑ ${p.stub?'<span class="tag stub">не загружено</span>':''}<a class="code" href="#/requirements/${p.id}">${esc(p.code)}</a> ${esc((p.text||'').slice(0,160))}</div>`).join('');
+  box.innerHTML = `
+    <div class="crumbs">
+      ${r.document_id?`<a href="#/documents/${r.document_id}/requirements">Документ</a> / `:''}
+      ${esc(r.code)}
+    </div>
+    <h3 class="code">${esc(r.code)}</h3>
+    <div class="muted">${esc(r.kind||'')} · rev ${esc(r.revision||'—')}</div>
+    ${r.product_id?`<p><a href="#/products/${r.product_id}">изделие</a></p>`:''}
+    <pre>${esc(r.text||'')}</pre>
+    <h2>Вышестоящие</h2>${parents || '<div class="muted">нет</div>'}
+    <h2>Атрибуты</h2><table>${attrs}</table>`;
+}
 
 function roleOf(name) {
   const n = name.toLowerCase();
@@ -119,7 +320,7 @@ function roleOf(name) {
 }
 
 function renderQueue() {
-  $('queue').innerHTML = bag.map((f,i) => `
+  $('queue').innerHTML = bag.map((f) => `
     <div class="qfile">
       <span class="name">${esc(f.name)}</span>
       <span class="tag ${roleOf(f.name)}">${roleOf(f.name)==='spec'?'спецификация':'вложение'}</span>
@@ -133,14 +334,6 @@ function addFiles(list) {
   }
   renderQueue();
   $('msg').textContent = bag.length + ' файл(ов) в пакете';
-}
-
-function esc(s){return String(s||'').replace(/[&<>]/g,c=>({ '&':'&amp;','<':'&lt;','>':'&gt;' }[c]));}
-
-async function j(url, opt) {
-  const r = await fetch(url, opt);
-  if (!r.ok) throw new Error(await r.text());
-  return r.json();
 }
 
 function log(html) {
@@ -200,8 +393,9 @@ async function openReq(id) {
   const atts = (r.attachments||[]).map(a =>
     `<div class="rel">📎 ${esc(a.filename)} <pre>${esc((a.text_content||'').slice(0,2000))}</pre></div>`).join('');
   $('card').innerHTML = `
-    <div class="code">${esc(r.code)}</div>
+    <div class="code"><a href="#/requirements/${r.id}" style="color:inherit">${esc(r.code)}</a></div>
     <div class="muted">${esc(r.kind||'')} · rev ${esc(r.revision||'—')}</div>
+    ${r.document_id?`<div class="rel"><a href="#/documents/${r.document_id}">документ</a></div>`:''}
     <pre>${esc(r.text||'')}</pre>
     <h2>Вышестоящие</h2>${parents || '<div class="muted">нет</div>'}
     <h2>Атрибуты и файлы</h2><table>${attrs}</table>${atts}`;
@@ -211,7 +405,7 @@ async function loadDocs() {
   docs = await j('/documents');
   $('docs').innerHTML = docs.map(d => `
     <div class="item ${currentDoc===d.id?'on':''}" onclick="selectDoc(${d.id})">
-      <div>${esc(d.title || d.filename)}</div>
+      <div><a href="#/documents/${d.id}" onclick="event.stopPropagation()">${esc(d.title || d.filename)}</a></div>
       <div class="muted">${esc(d.filename)} · ${esc(d.status)}</div>
     </div>`).join('') || '<div class="muted">нет документов</div>';
 }
@@ -219,10 +413,7 @@ async function loadDocs() {
 async function selectDoc(id) {
   currentDoc = id;
   const qs = id ? ('?document_id='+id) : '';
-  const [info, r] = await Promise.all([
-    id ? j('/documents/'+id) : {counts:{}},
-    j('/requirements'+qs),
-  ]);
+  const r = await j('/requirements'+qs);
   reqs = r;
   const ov = await j('/overview');
   renderStats(ov.totals);
@@ -240,6 +431,22 @@ $('drop').addEventListener('drop', e => {
 });
 $('clearBtn').onclick = () => { bag = []; renderQueue(); $('msg').textContent = 'список очищен'; };
 $('q').addEventListener('input', renderReqs);
+
+$('wipeBtn').onclick = async () => {
+  if (!confirm('Удалить все изделия, требования и документы из БД?')) return;
+  try {
+    await j('/db/wipe', { method: 'POST' });
+    reqs = []; docs = []; currentDoc = null; seen.clear();
+    renderReqs(); renderStats({}); loadDocs();
+    $('card').innerHTML = '<span class="muted">база пуста</span>';
+    $('msg').textContent = 'БД очищена';
+    log('<span class="tag ok">wipe</span> база очищена');
+    if (location.hash && location.hash !== '#/') location.hash = '#/';
+    else route();
+  } catch (e) {
+    $('msg').textContent = e.message;
+  }
+};
 
 $('indexBtn').onclick = async () => {
   if (!bag.length) return;
@@ -292,9 +499,6 @@ function handle(ev) {
     log('<span class="tag ok">готово</span> <b>'+esc(ev.filename)+'</b> → треб. '+c.requirements+', изд. '+c.products+', влож. '+c.attachments+(c.stubs? ', stub '+c.stubs:''));
     mergeReqs(ev.entities.requirements || [], true);
     currentDoc = ev.document_id;
-    if (ev.entities.counts) {
-      // live bump after each file via overview later
-    }
   }
   if (ev.event === 'file_error') {
     log('<span class="tag err">сбой</span> <b>'+esc(ev.filename)+'</b> — '+esc(ev.error));
@@ -338,10 +542,6 @@ $('schemeFile').onchange = async () => {
     const miss = (cov.missing||[]).map(m => m.name || m.node_id).join(', ') || 'нет';
     $('msg').innerHTML = 'покрытие '+ (cov.coverage??0) +'% · не покрыто: '+esc(miss)+
       ' · <a href="'+(data.download||'#')+'" style="color:#3d9cf0">отчёт</a>';
-    const nodes = ((data.scheme||{}).nodes||[]).map(n =>
-      `<div class="rel">${esc(n.id)} — ${esc(n.name)}</div>`).join('');
-    $('card').innerHTML = `<h2>Функциональная схема</h2>${nodes || '<div class="muted">узлов нет</div>'}
-      <pre>${esc(JSON.stringify(cov.rows||[], null, 2).slice(0,4000))}</pre>`;
   } catch(e) { $('msg').textContent = e.message; }
   $('schemeFile').value = '';
 };
@@ -357,6 +557,7 @@ $('unittests').onclick = async () => {
   } catch(e) { $('msg').textContent = e.message; }
 };
 
+window.addEventListener('hashchange', route);
 j('/overview').then(ov => {
   renderStats(ov.totals);
   reqs = ov.recent_requirements || [];
@@ -364,6 +565,7 @@ j('/overview').then(ov => {
 }).catch(()=>{});
 loadDocs();
 renderQueue();
+route();
 </script>
 </body>
 </html>
