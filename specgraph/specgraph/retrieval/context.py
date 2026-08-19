@@ -13,6 +13,7 @@ from typing import Any
 from sqlalchemy.orm import Session, joinedload
 
 from specgraph.models import (
+    Attachment,
     Embedding,
     EntityRelation,
     EntityType,
@@ -105,6 +106,35 @@ def expand_product(db: Session, product_id: int, depth: int = 2) -> dict[str, An
     }
 
 
+def expand_requirement(db: Session, requirement_id: int) -> dict[str, Any]:
+    r = db.query(Requirement).options(joinedload(Requirement.attributes)).filter(Requirement.id == requirement_id).first()
+    if not r:
+        return {}
+    out = _req_dump(r)
+    rels = (
+        db.query(EntityRelation)
+        .filter(
+            EntityRelation.src_type == EntityType.REQUIREMENT,
+            EntityRelation.src_id == r.id,
+            EntityRelation.rel_type.in_([RelationType.DERIVED_FROM, RelationType.REFINES]),
+        )
+        .all()
+    )
+    parents = []
+    for rel in rels:
+        p = db.get(Requirement, rel.dst_id)
+        if p:
+            parents.append(_req_dump(p) | {"stub": bool((p.extra or {}).get("stub"))})
+    children = db.query(Requirement).filter(Requirement.parent_id == r.id).all()
+    atts = db.query(Attachment).filter(Attachment.requirement_id == r.id).all()
+    out["parents"] = parents
+    out["children"] = [_req_dump(c) for c in children]
+    out["attachments"] = [
+        {"filename": a.filename, "code": a.code, "text": (a.text_content or "")[:4000]} for a in atts
+    ]
+    return out
+
+
 def gather_context(
     db: Session,
     *,
@@ -187,6 +217,17 @@ def context_as_prompt(bundle: dict[str, Any]) -> str:
     parts = ["Контекст спецификации (связанные сущности):"]
     if bundle.get("query"):
         parts.append(f"Запрос: {bundle['query']}")
+    seed = bundle.get("seed_requirement") or {}
+    if seed.get("code"):
+        parts.append(f"\n## Требование {seed['code']}")
+        parts.append(seed.get("text") or "")
+        for p in seed.get("parents") or []:
+            mark = " [не загружено]" if p.get("stub") else ""
+            parts.append(f"↑ источник{mark}: {p.get('code')} {(p.get('text') or '')[:400]}")
+        for a in seed.get("attachments") or []:
+            parts.append(f"файл {a.get('filename')}: {(a.get('text') or '')[:800]}")
+        for k, v in (seed.get("attributes") or {}).items():
+            parts.append(f"  {k}: {str(v)[:400]}")
     for sg in bundle.get("subgraphs", []):
         p = sg["product"]
         parts.append(f"\n## Изделие {p['code']} — {p['name']}")

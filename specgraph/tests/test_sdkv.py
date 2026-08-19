@@ -4,9 +4,10 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from specgraph.db import Base
-from specgraph.ingest.ids import find_appendix_ids, find_ids
 from specgraph.ingest.pipeline import ingest_file, ingest_many
+from specgraph.ingest.structure import split_source_refs
 from specgraph.models import Attachment, EntityRelation, RelationType, Requirement
+from specgraph.retrieval.context import expand_requirement
 
 SDKV = Path(__file__).resolve().parents[1] / "input" / "sdkv"
 TA1 = next(SDKV.glob("*ТА1.docx"))
@@ -22,27 +23,26 @@ def _db(tmp_path, monkeypatch):
     return sessionmaker(bind=engine)()
 
 
-def test_ssj_id_parser():
-    assert find_ids("MK-SSJ-NEW.HRDW.FNCT.4-20_PSU-1d2V.001/A.03")[0].endswith("001/A.03")
-    assert find_appendix_ids("согласно приложению «MK-SSJ-NEW.HRDW.00001/A-Уровни»")
+def test_source_field_split_by_structure_not_mask():
+    raw = "FOO.BAR.ANYTHING.999/Z\n-\nXYZ.PARENT.1\n"
+    refs = split_source_refs(raw)
+    assert refs == ["FOO.BAR.ANYTHING.999/Z", "XYZ.PARENT.1"]
 
 
 def test_ta1_cards_and_parent_stubs(tmp_path, monkeypatch):
     db = _db(tmp_path, monkeypatch)
     doc = ingest_file(db, TA1, TA1.name, index=False)
     reqs = db.query(Requirement).all()
-    codes = {r.code for r in reqs}
-    assert any("HRDW.FNCT" in c for c in codes)
-    assert any(".SSTM." in c for c in codes)
+    real = [r for r in reqs if not (r.extra or {}).get("stub")]
+    assert len(real) >= 80
+    assert any(r.attributes for r in real)
     stubs = [r for r in reqs if (r.extra or {}).get("stub")]
     assert stubs
     derived = db.query(EntityRelation).filter(EntityRelation.rel_type == RelationType.DERIVED_FROM).count()
     assert derived >= 1
-    # приложение упоминается в атрибутах
-    attrs = []
-    for r in reqs:
-        attrs.extend(r.attributes)
-    assert any("HRDW.0000" in (a.value or "") or a.key.startswith("приложение") or a.key.startswith("файл") for a in attrs)
+    sample = next(r for r in real if r.text and len(r.text) > 40)
+    ctx = expand_requirement(db, sample.id)
+    assert ctx["code"] == sample.code
     assert doc.id
 
 
@@ -53,7 +53,6 @@ def test_batch_binds_appendix_file(tmp_path, monkeypatch):
     assert len(docs) >= 5
     atts = db.query(Attachment).all()
     assert atts
-    # содержимое xlsx/записки попало в атрибут какого-то требования
     hit = False
     for r in db.query(Requirement).all():
         for a in r.attributes:

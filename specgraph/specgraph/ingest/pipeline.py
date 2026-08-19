@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from specgraph.config import settings
 from specgraph.ingest.extract import detect_kind, extract_any, extract_parsed_json
-from specgraph.ingest.ids import base_code, filename_matches_code, find_appendix_ids, find_ids
+from specgraph.ingest.ids import base_code
 from specgraph.ingest.resolve import ensure_stub, find_by_code, link_derived, merge_if_stub, resolve_pending
 from specgraph.ingest.structure import DraftGraph, from_extracted, from_parsed_json
 from specgraph.models import (
@@ -164,7 +164,8 @@ def persist_graph(db: Session, doc: Document, draft: DraftGraph) -> None:
         extra = dict(dr.extra or {})
         if dr.stub:
             extra["stub"] = True
-        existing = find_by_code(db, dr.code)
+        with db.no_autoflush:
+            existing = find_by_code(db, dr.code)
         if existing and (existing.extra or {}).get("stub"):
             merge_if_stub(
                 existing,
@@ -194,8 +195,12 @@ def persist_graph(db: Session, doc: Document, draft: DraftGraph) -> None:
             db.add(req)
             db.flush()
         _put(dr.code, req)
+        have = {a.key for a in req.attributes} if req.attributes else set()
         for k, v in dr.attributes.items():
+            if k in have:
+                continue
             db.add(RequirementAttribute(requirement_id=req.id, key=k, value=v))
+            have.add(k)
         if req.product_id:
             db.add(
                 EntityRelation(
@@ -214,7 +219,11 @@ def persist_graph(db: Session, doc: Document, draft: DraftGraph) -> None:
             _put(pcode, parent)
             link_derived(db, req, parent)
         for acode in dr.attachment_refs or []:
-            db.add(RequirementAttribute(requirement_id=req.id, key=f"приложение:{base_code(acode)}", value=acode))
+            key = f"приложение:{base_code(acode)[:80]}"
+            if key in have:
+                continue
+            db.add(RequirementAttribute(requirement_id=req.id, key=key, value=acode))
+            have.add(key)
 
     type_map = {
         "applies_to": RelationType.APPLIES_TO,
@@ -288,13 +297,15 @@ def persist_images(db: Session, doc: Document, images, captions: list[str]) -> N
 
 
 def persist_self_attachment(db: Session, doc: Document, draft: DraftGraph) -> None:
-    """Если сам файл — приложение (HRDW.00001), сохранить текст как вложение требований."""
     codes = list(draft.attachment_codes or [])
-    codes += find_appendix_ids(doc.filename or "") + find_appendix_ids(doc.title or "")
-    codes = list(dict.fromkeys(codes))
+    stem = Path(doc.filename).stem
+    only_app = bool(draft.requirements) and all((r.extra or {}).get("appendix") for r in draft.requirements)
+    if only_app or not draft.requirements:
+        codes.append(stem)
+    codes = list(dict.fromkeys(c for c in codes if c))
     if not codes:
         return
-    text = (doc.raw_text or "")[:50000]
+    text_body = (doc.raw_text or "")[:50000]
     for code in codes:
         att = Attachment(
             document_id=doc.id,
@@ -302,7 +313,7 @@ def persist_self_attachment(db: Session, doc: Document, draft: DraftGraph) -> No
             code=base_code(code),
             filename=doc.filename,
             storage_path=doc.storage_path,
-            text_content=text,
+            text_content=text_body,
             extra={"role": "appendix"},
         )
         db.add(att)
@@ -312,46 +323,45 @@ def persist_self_attachment(db: Session, doc: Document, draft: DraftGraph) -> No
 
 def bind_attachment_to_requirements(db: Session, att: Attachment) -> int:
     n = 0
-    if not att.code:
-        return 0
-    reqs = db.query(Requirement).all()
+    stem = Path(att.filename).stem
+    needles = [x for x in (att.code, stem, base_code(stem)) if x]
+    with db.no_autoflush:
+        reqs = db.query(Requirement).all()
     for req in reqs:
         blob = " ".join(
             [
                 req.text or "",
-                req.code,
+                req.code or "",
                 " ".join(f"{a.key}={a.value}" for a in req.attributes),
             ]
         )
-        if att.code in blob or filename_matches_code(att.filename, att.code):
-            if att.code in blob or any(att.code in (a.value or "") for a in req.attributes):
-                if not att.requirement_id:
-                    att.requirement_id = req.id
-                key = f"файл:{att.filename}"
-                exists = (
-                    db.query(RequirementAttribute)
-                    .filter(RequirementAttribute.requirement_id == req.id, RequirementAttribute.key == key)
-                    .first()
+        if not any(nd and nd in blob for nd in needles):
+            continue
+        if not att.requirement_id:
+            att.requirement_id = req.id
+        key = f"файл:{att.filename}"[:128]
+        exists = (
+            db.query(RequirementAttribute)
+            .filter(RequirementAttribute.requirement_id == req.id, RequirementAttribute.key == key)
+            .first()
+        )
+        if not exists:
+            db.add(
+                RequirementAttribute(
+                    requirement_id=req.id,
+                    key=key,
+                    value=(att.text_content or "")[:20000],
                 )
-                if not exists:
-                    db.add(
-                        RequirementAttribute(
-                            requirement_id=req.id,
-                            key=key,
-                            value=(att.text_content or "")[:20000],
-                        )
-                    )
-                    n += 1
+            )
+            n += 1
     return n
 
 
 def ingest_many(db: Session, files: list[tuple[Path, str]], *, index: bool = False) -> list[Document]:
-    """Пакет: сначала спецификации, потом приложения — чтобы связать файлы с карточками."""
-
     def rank(name: str) -> int:
-        if find_appendix_ids(name):
-            return 2
         if name.lower().endswith((".xlsx", ".xlsm")):
+            return 2
+        if Path(name).stem.count(".") >= 2:
             return 2
         return 1
 
@@ -359,7 +369,6 @@ def ingest_many(db: Session, files: list[tuple[Path, str]], *, index: bool = Fal
     docs: list[Document] = []
     for path, name in ordered:
         docs.append(ingest_file(db, path, name, index=index))
-    # второй проход: привязать приложения ко всем требованиям
     for att in db.query(Attachment).all():
         bind_attachment_to_requirements(db, att)
     resolve_pending(db)
