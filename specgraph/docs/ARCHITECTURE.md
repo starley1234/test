@@ -41,9 +41,10 @@ UI  /  и /app          FastAPI routes          pipelines / ingest
       → requirements / products / attachments
 
 кнопка пайплайна → POST /pipelines/runs/{name}
-      → jobs.start_job (поток + токены)
-      → gather_context(document_id, requirement_ids)
-      → LLM / эвристика
+      → jobs.start_job (поток + таблица pipeline_runs)
+      → gather_context(document_id, requirement_ids)  # лимит MAX_REQS_PER_RUN
+      → LLM или честная эвристика (поле mode)
+      → оценки на карточке (requirement_reviews) / черновик формулировки
       → exports (json, md, xlsx, docx)
 ```
 
