@@ -475,7 +475,7 @@ def bind_attachment_to_requirements(db: Session, att: Attachment) -> int:
             RequirementAttribute(
                 requirement_id=req.id,
                 key=key,
-                value=(att.text_content or "")[:20000],
+                value=f"document:{att.document_id}:{att.filename}",
             )
         )
         pending.add((req.id, key))

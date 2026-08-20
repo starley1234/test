@@ -68,7 +68,7 @@
 
 ## Режимы сборки контекста (`mode`)
 
-Параметр `POST /retrieval/context` и пайплайна.
+Параметр `context_mode` в `POST /retrieval/context` и в теле пайплайна.
 
 | mode | Что кладём в пакет | Кому |
 |---|---|---|

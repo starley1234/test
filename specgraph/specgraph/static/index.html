@@ -96,6 +96,7 @@
       <a href="#/pipelines" id="nav-pipelines">Пайплайны</a>
       <a href="#/history" id="nav-history">История</a>
       <a href="#/tree" id="nav-tree">Дерево</a>
+      <a href="#/context" id="nav-context">Контекст</a>
     </nav>
     <div class="bar">
       <span class="muted" id="who">гость</span>
@@ -184,7 +185,7 @@ function parseHash() {
 
 function setNav() {
   const p = parseHash().parts[0] || '';
-  ['index','products','documents','pipelines','history','tree'].forEach(k => {
+  ['index','products','documents','pipelines','history','tree','context'].forEach(k => {
     const el = $('nav-'+k);
     if (el) el.classList.toggle('on', (k==='index' && !p) || p === k);
   });
@@ -226,6 +227,8 @@ async function route() {
       await renderHistory(box);
     } else if (a === 'tree') {
       await renderTree(box);
+    } else if (a === 'context') {
+      await renderContextLab(box);
     } else if (a === 'diagram' && parts[1]) {
       await renderDiagram(box, parts[1]);
     } else {
@@ -318,8 +321,17 @@ async function renderDocument(box, id) {
       <div><b>${c.illustrations||0}</b><span class="muted">рис.</span></div>
     </div>
     <p><a href="#/documents/${id}/requirements">Требования документа →</a></p>
+    <h2>Рисунки (файлы на диске)</h2>
+    <div style="display:flex;flex-wrap:wrap;gap:8px">
+      ${(d.illustrations||[]).map(i => `<a href="${i.url}" target="_blank"><img src="${i.url}" style="height:72px;border-radius:8px;border:1px solid var(--line)" /><div class="muted">${esc(i.caption||i.filename)}</div></a>`).join('') || '<div class="muted">нет</div>'}
+    </div>
+    <h2>Чанки сырого текста</h2>
+    <div class="muted" id="chunkHint">загрузка…</div>
     <h2>Изделия в документе</h2>
     ${prods || '<div class="muted">нет</div>'}`;
+  const ch = await j('/documents/'+id+'/chunks');
+  const hint = document.getElementById('chunkHint');
+  if (hint) hint.textContent = ch.length ? (ch.length+' шт. · '+ch.map(x=>'#'+x.seq+' ('+x.chars+')').join(', ')) : 'нет (у файла есть карточки — не режем)';
 }
 
 async function renderDocReqs(box, id) {
@@ -396,6 +408,42 @@ async function renderTree(box) {
       ${rows(data.roots||[], 0)}
       ${(data.orphan_requirements||[]).map(r => `<tr><td><a class="code" href="#/requirements/${r.id}">${esc(r.code)}</a></td><td class="muted">без изделия · ${esc(fmtWhen(r.created_at))}</td></tr>`).join('')}
     </table>`;
+}
+
+async function renderContextLab(box) {
+  const docs = await j('/documents');
+  box.innerHTML = `
+    <div class="crumbs"><a href="#/">Индекс</a> / Контекст</div>
+    <h3>Что уйдёт в модель</h3>
+    <p class="muted">граф — карточки и связи. граф+чанки — плюс нарезка сырых файлов без карточек. только чанки — простыня.</p>
+    <select id="ctxDoc"><option value="">документ…</option>${docs.map(d => `<option value="${d.id}">${esc(d.filename)}</option>`).join('')}</select>
+    <div id="ctxReqs" class="muted" style="max-height:30vh;overflow:auto;margin:8px 0"></div>
+    <div class="bar">
+      <button type="button" class="ghost" data-cm="graph">граф</button>
+      <button type="button" class="ghost" data-cm="hybrid">граф+чанки</button>
+      <button type="button" class="ghost" data-cm="chunks">только чанки</button>
+    </div>
+    <div class="muted" id="ctxMeta"></div>
+    <pre id="ctxPre"></pre>`;
+  async function loadR() {
+    const id = $('ctxDoc').value;
+    if (!id) { $('ctxReqs').innerHTML = ''; return; }
+    const rows = await j('/requirements?document_id='+id);
+    $('ctxReqs').innerHTML = rows.filter(r => !(r.extra&&r.extra.stub)).map(r =>
+      `<label class="chk"><input type="radio" name="cr" value="${r.id}" /><span class="code">${esc(r.code)}</span> ${esc((r.text||'').slice(0,80))}</label>`
+    ).join('') || '<div class="muted">нет карточек</div>';
+  }
+  $('ctxDoc').onchange = loadR;
+  box.querySelectorAll('[data-cm]').forEach(b => b.onclick = async () => {
+    const rid = (document.querySelector('input[name=cr]:checked')||{}).value;
+    if (!rid) { $('ctxMeta').textContent = 'выберите карточку'; return; }
+    const jx = await j('/retrieval/context', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({requirement_id:+rid, context_mode:b.dataset.cm, hop:1}),
+    });
+    $('ctxMeta').textContent = `режим ${jx.mode} · ${jx.packed_chars||0} / ${jx.budget_chars||0} симв. · чанков ${(jx.chunks||[]).length}`;
+    $('ctxPre').textContent = (jx.prompt||'').slice(0,8000);
+  });
 }
 
 async function renderDiagram(box, name) {
@@ -622,7 +670,9 @@ function renderStats(t) {
     <div><b>${t.documents??0}</b><span class="muted">док.</span></div>
     <div><b>${t.requirements??0}</b><span class="muted">треб.</span></div>
     <div><b>${t.products??0}</b><span class="muted">изделия</span></div>
-    <div><b>${t.attachments??0}</b><span class="muted">влож.</span></div>`;
+    <div><b>${t.attachments??0}</b><span class="muted">влож.</span></div>
+    <div><b>${t.illustrations??0}</b><span class="muted">рис.</span></div>
+    <div><b>${t.chunks??0}</b><span class="muted">чанки</span></div>`;
 }
 
 function renderReqs() {

@@ -175,9 +175,13 @@ def get_document(doc_id: int, db: Session = Depends(get_db)):
     n_r = db.query(Requirement).filter(Requirement.document_id == doc_id).count()
     n_i = db.query(Illustration).filter(Illustration.document_id == doc_id).count()
     n_a = db.query(Attachment).filter(Attachment.document_id == doc_id).count()
+    from specgraph.models import DocumentChunk
+
+    n_c = db.query(DocumentChunk).filter(DocumentChunk.document_id == doc_id).count()
     products = (
         db.query(Product).filter(Product.document_id == doc_id).order_by(Product.level, Product.id).all()
     )
+    ills = db.query(Illustration).filter(Illustration.document_id == doc_id).all()
     return {
         "id": d.id,
         "filename": d.filename,
@@ -186,9 +190,25 @@ def get_document(doc_id: int, db: Session = Depends(get_db)):
         "status": d.status,
         "uploaded_by_id": d.uploaded_by_id,
         "parse_meta": d.parse_meta,
-        "counts": {"products": n_p, "requirements": n_r, "illustrations": n_i, "attachments": n_a},
+        "counts": {
+            "products": n_p,
+            "requirements": n_r,
+            "illustrations": n_i,
+            "attachments": n_a,
+            "chunks": n_c,
+        },
         "products": [
             {"id": p.id, "code": p.code, "name": p.name, "level": p.level, "parent_id": p.parent_id} for p in products
+        ],
+        "illustrations": [
+            {
+                "id": i.id,
+                "filename": i.filename,
+                "caption": i.caption,
+                "url": f"/illustrations/{i.id}",
+                "content_type": i.content_type,
+            }
+            for i in ills
         ],
     }
 
@@ -357,8 +377,33 @@ def get_requirement(req_id: int, db: Session = Depends(get_db)):
         | (Attachment.code.in_([base_code(r.code)] + [base_code(a.value) for a in r.attributes if a.key.startswith("приложение")]))
     ).all()
     out["attachments"] = [
-        {"id": a.id, "filename": a.filename, "code": a.code, "text_content": (a.text_content or "")[:8000]}
+        {
+            "id": a.id,
+            "filename": a.filename,
+            "code": a.code,
+            "document_id": a.document_id,
+            "preview": (a.text_content or "")[:400],
+        }
         for a in atts
+    ]
+    mentions = (
+        db.query(EntityRelation)
+        .filter(
+            EntityRelation.src_type == EntityType.REQUIREMENT,
+            EntityRelation.src_id == r.id,
+            EntityRelation.dst_type == EntityType.DOCUMENT,
+        )
+        .all()
+    )
+    docs_m = []
+    for rel in mentions:
+        d = db.get(Document, rel.dst_id)
+        if d:
+            docs_m.append({"id": d.id, "filename": d.filename, "title": d.title})
+    out["mentioned_documents"] = docs_m
+    ills = db.query(Illustration).filter(Illustration.document_id == r.document_id).all()
+    out["illustrations"] = [
+        {"id": i.id, "filename": i.filename, "caption": i.caption, "url": f"/illustrations/{i.id}"} for i in ills[:24]
     ]
     return out
 

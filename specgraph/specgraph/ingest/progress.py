@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from specgraph.ingest.pipeline import bind_attachment_to_requirements, ingest_file
 from specgraph.ingest.resolve import resolve_pending
-from specgraph.models import Attachment, Document, Illustration, Product, Requirement
+from specgraph.models import Attachment, Document, DocumentChunk, Illustration, Product, Requirement
 
 
 def file_role(name: str) -> str:
@@ -56,6 +56,8 @@ def db_totals(db: Session) -> dict[str, int]:
         "requirements": db.query(Requirement).filter(Requirement.is_current.is_(True)).count(),
         "products": db.query(Product).count(),
         "attachments": db.query(Attachment).count(),
+        "illustrations": db.query(Illustration).count(),
+        "chunks": db.query(DocumentChunk).count(),
     }
 
 
