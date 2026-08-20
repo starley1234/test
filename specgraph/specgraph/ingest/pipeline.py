@@ -99,7 +99,8 @@ def ingest_file(
     }
     persist_graph(db, doc, draft)
     persist_images(db, doc, images, draft.figure_captions)
-    persist_chunks(db, doc)
+    if not draft.has_cards:
+        persist_chunks(db, doc)
     persist_self_attachment(db, doc, draft)
     link_mentions(db, doc)
     doc.parse_meta = {**(doc.parse_meta or {}), "ingest_report": make_ingest_report(db, doc, draft)}
@@ -153,7 +154,8 @@ def ingest_parsed_json(
         "counts": {"products": len(draft.products), "requirements": len(draft.requirements)},
     }
     persist_graph(db, doc, draft)
-    persist_chunks(db, doc)
+    if not draft.has_cards:
+        persist_chunks(db, doc)
     db.commit()
     if index:
         try:
@@ -324,7 +326,7 @@ def persist_images(db: Session, doc: Document, images, captions: list[str]) -> N
             storage_path=str(path),
             caption=caption,
             content_type=img.content_type,
-            blob=img.content if len(img.content) < 2_000_000 else None,
+            blob=None,
         )
         db.add(ill)
         db.flush()

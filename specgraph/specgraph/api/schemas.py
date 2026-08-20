@@ -16,6 +16,7 @@ class RetrievalRequest(BaseModel):
     document_id: int | None = None
     top_k: int = 8
     hop: int = 2
+    context_mode: str = "graph"  # graph | hybrid | chunks
 
 
 class PipelineRequest(RetrievalRequest):

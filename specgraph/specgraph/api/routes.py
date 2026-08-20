@@ -393,7 +393,10 @@ def list_chunks(doc_id: int, db: Session = Depends(get_db)):
 
 @router.post("/retrieval/context")
 def retrieval_context(body: RetrievalRequest, db: Session = Depends(get_db)):
-    return gather_context(db, **body.model_dump())
+    data = body.model_dump()
+    data.pop("source_code", None)
+    data.pop("debug", None)
+    return gather_context(db, **data)
 
 
 @router.post("/pipelines/validate-requirements")

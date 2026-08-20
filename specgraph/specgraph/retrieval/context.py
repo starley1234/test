@@ -149,8 +149,7 @@ def expand_requirement(db: Session, requirement_id: int) -> dict[str, Any]:
         }
         for i in ills[:12]
     ]
-    chunks = _chunks_for_requirement(db, r)
-    out["chunks"] = chunks
+    out["chunks"] = []
     return out
 
 
@@ -205,8 +204,21 @@ def gather_context(
     document_id: int | None = None,
     top_k: int = 8,
     hop: int = 2,
+    mode: str = "graph",
+    context_mode: str | None = None,
 ) -> dict[str, Any]:
-    bundle: dict[str, Any] = {"query": query, "hits": [], "subgraphs": [], "relations": [], "requirements": []}
+    mode = (context_mode or mode or "graph").lower()
+    if mode not in {"graph", "hybrid", "chunks"}:
+        mode = "graph"
+    bundle: dict[str, Any] = {
+        "query": query,
+        "mode": mode,
+        "hits": [],
+        "subgraphs": [],
+        "relations": [],
+        "requirements": [],
+        "chunks": [],
+    }
 
     if product_code and not product_id:
         p = db.query(Product).filter(Product.code == product_code).first()
@@ -223,6 +235,9 @@ def gather_context(
             r = db.get(Requirement, requirement_id)
             if r and r.product_id:
                 bundle["subgraphs"].append(expand_product(db, r.product_id, depth=hop))
+            if mode in {"hybrid", "chunks"} and r:
+                bundle["chunks"] = _chunks_for_requirement(db, r)
+                exp["chunks"] = bundle["chunks"]
 
     ids = list(requirement_ids or [])
     q = db.query(Requirement).options(joinedload(Requirement.attributes)).filter(Requirement.is_current.is_(True))
@@ -258,7 +273,7 @@ def gather_context(
                 r = db.get(Requirement, emb.entity_id)
                 if r and r.product_id:
                     bundle["subgraphs"].append(expand_product(db, r.product_id, depth=1))
-            elif emb.entity_type == EntityType.CHUNK:
+            elif emb.entity_type == EntityType.CHUNK and mode in {"hybrid", "chunks"}:
                 ch = db.get(DocumentChunk, emb.entity_id)
                 if ch:
                     bundle.setdefault("chunks", []).append(

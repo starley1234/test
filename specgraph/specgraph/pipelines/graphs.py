@@ -53,6 +53,7 @@ def _retrieve(state: PipelineState, db: Session) -> PipelineState:
         document_id=state.get("document_id"),
         requirement_id=state.get("requirement_id"),
         requirement_ids=ids,
+        mode=state.get("context_mode") or "graph",
     )
     prompt = context_as_prompt(ctx)
     ev = {"event": "retrieve", "step": f"контекст: {len(ctx.get('requirements') or [])} треб."}
