@@ -21,6 +21,7 @@ from specgraph.ingest.structure import DraftGraph, from_extracted, from_parsed_j
 from specgraph.models import (
     Attachment,
     Document,
+    DocumentChunk,
     DocumentKind,
     EntityRelation,
     EntityType,
@@ -98,7 +99,9 @@ def ingest_file(
     }
     persist_graph(db, doc, draft)
     persist_images(db, doc, images, draft.figure_captions)
+    persist_chunks(db, doc)
     persist_self_attachment(db, doc, draft)
+    link_mentions(db, doc)
     doc.parse_meta = {**(doc.parse_meta or {}), "ingest_report": make_ingest_report(db, doc, draft)}
     if commit:
         db.commit()
@@ -150,6 +153,7 @@ def ingest_parsed_json(
         "counts": {"products": len(draft.products), "requirements": len(draft.requirements)},
     }
     persist_graph(db, doc, draft)
+    persist_chunks(db, doc)
     db.commit()
     if index:
         try:
@@ -349,6 +353,64 @@ def persist_images(db: Session, doc: Document, images, captions: list[str]) -> N
                     break
 
 
+def persist_chunks(db: Session, doc: Document) -> int:
+    from specgraph.retrieval.chunks import split_text
+
+    pieces = split_text(doc.raw_text or "")
+    n = 0
+    for seq, (a, b, piece) in enumerate(pieces):
+        db.add(
+            DocumentChunk(
+                document_id=doc.id,
+                seq=seq,
+                heading=(doc.title or doc.filename)[:512],
+                text=piece,
+                char_start=a,
+                char_end=b,
+            )
+        )
+        n += 1
+    return n
+
+
+def link_mentions(db: Session, doc: Document) -> int:
+    needles = [x for x in (doc.filename, Path(doc.filename).stem) if x and len(x) >= 4]
+    if not needles:
+        return 0
+    n = 0
+    with db.no_autoflush:
+        reqs = db.query(Requirement).options(joinedload(Requirement.attributes)).all()
+    for req in reqs:
+        blob = " ".join([req.text or "", req.code or "", " ".join(a.value for a in req.attributes)])
+        if not any(nd in blob for nd in needles):
+            continue
+        exists = (
+            db.query(EntityRelation)
+            .filter(
+                EntityRelation.rel_type == RelationType.DEPENDS_ON,
+                EntityRelation.src_type == EntityType.REQUIREMENT,
+                EntityRelation.src_id == req.id,
+                EntityRelation.dst_type == EntityType.DOCUMENT,
+                EntityRelation.dst_id == doc.id,
+            )
+            .first()
+        )
+        if exists:
+            continue
+        db.add(
+            EntityRelation(
+                rel_type=RelationType.DEPENDS_ON,
+                src_type=EntityType.REQUIREMENT,
+                src_id=req.id,
+                dst_type=EntityType.DOCUMENT,
+                dst_id=doc.id,
+                extra={"kind": "mention", "filename": doc.filename},
+            )
+        )
+        n += 1
+    return n
+
+
 def persist_self_attachment(db: Session, doc: Document, draft: DraftGraph) -> None:
     codes = list(draft.attachment_codes or [])
     stem = Path(doc.filename).stem
@@ -433,6 +495,8 @@ def ingest_many(db: Session, files: list[tuple[Path, str]], *, index: bool = Fal
         docs.append(ingest_file(db, path, name, index=index, commit=False))
     for att in db.query(Attachment).all():
         bind_attachment_to_requirements(db, att)
+    for d in docs:
+        link_mentions(db, d)
     resolve_pending(db)
     db.commit()
     return docs

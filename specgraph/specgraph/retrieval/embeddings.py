@@ -6,7 +6,7 @@ import numpy as np
 from sqlalchemy.orm import Session
 
 from specgraph.config import settings
-from specgraph.models import Embedding, EntityType, Illustration, Product, Requirement
+from specgraph.models import DocumentChunk, Embedding, EntityType, Illustration, Product, Requirement
 
 
 @lru_cache(maxsize=1)

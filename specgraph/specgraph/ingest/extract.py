@@ -69,6 +69,8 @@ def detect_kind(filename: str) -> str:
         return "parsed_json"
     if lower.endswith((".xlsx", ".xlsm")):
         return "xlsx"
+    if lower.endswith((".png", ".jpg", ".jpeg", ".gif", ".tif", ".tiff", ".webp", ".bmp", ".emf", ".wmf")):
+        return "image"
     return "other"
 
 
@@ -83,6 +85,8 @@ def _ctype(name: str) -> str:
         ".gif": "image/gif",
         ".tif": "image/tiff",
         ".tiff": "image/tiff",
+        ".webp": "image/webp",
+        ".bmp": "image/bmp",
     }.get(ext, "application/octet-stream")
 
 

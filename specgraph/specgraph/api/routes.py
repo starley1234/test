@@ -363,6 +363,34 @@ def get_requirement(req_id: int, db: Session = Depends(get_db)):
     return out
 
 
+@router.get("/illustrations/{ill_id}")
+def get_illustration(ill_id: int, db: Session = Depends(get_db)):
+    ill = db.get(Illustration, ill_id)
+    if not ill:
+        raise HTTPException(404)
+    path = Path(ill.storage_path)
+    if path.is_file():
+        return FileResponse(path, media_type=ill.content_type or "application/octet-stream", filename=ill.filename)
+    if ill.blob:
+        from fastapi.responses import Response
+
+        return Response(content=ill.blob, media_type=ill.content_type or "application/octet-stream")
+    raise HTTPException(404, "no image bytes")
+
+
+@router.get("/documents/{doc_id}/chunks")
+def list_chunks(doc_id: int, db: Session = Depends(get_db)):
+    from specgraph.models import DocumentChunk
+
+    if not db.get(Document, doc_id):
+        raise HTTPException(404)
+    rows = db.query(DocumentChunk).filter(DocumentChunk.document_id == doc_id).order_by(DocumentChunk.seq).all()
+    return [
+        {"id": c.id, "seq": c.seq, "heading": c.heading, "chars": len(c.text or ""), "preview": (c.text or "")[:200]}
+        for c in rows
+    ]
+
+
 @router.post("/retrieval/context")
 def retrieval_context(body: RetrievalRequest, db: Session = Depends(get_db)):
     return gather_context(db, **body.model_dump())

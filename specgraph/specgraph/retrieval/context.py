@@ -12,8 +12,10 @@ from typing import Any
 
 from sqlalchemy.orm import Session, joinedload
 
+from specgraph.config import settings
 from specgraph.models import (
     Attachment,
+    DocumentChunk,
     Embedding,
     EntityRelation,
     EntityType,
@@ -136,7 +138,60 @@ def expand_requirement(db: Session, requirement_id: int) -> dict[str, Any]:
     out["attachments"] = [
         {"filename": a.filename, "code": a.code, "text": (a.text_content or "")[:4000]} for a in atts
     ]
+    ills = db.query(Illustration).filter(Illustration.document_id == r.document_id).all()
+    out["illustrations"] = [
+        {
+            "id": i.id,
+            "filename": i.filename,
+            "caption": i.caption,
+            "url": f"/illustrations/{i.id}",
+            "content_type": i.content_type,
+        }
+        for i in ills[:12]
+    ]
+    chunks = _chunks_for_requirement(db, r)
+    out["chunks"] = chunks
     return out
+
+
+def _chunks_for_requirement(db: Session, r: Requirement, limit: int = 6) -> list[dict[str, Any]]:
+    doc_ids: set[int] = set()
+    if r.document_id:
+        doc_ids.add(r.document_id)
+    rels = (
+        db.query(EntityRelation)
+        .filter(
+            EntityRelation.src_type == EntityType.REQUIREMENT,
+            EntityRelation.src_id == r.id,
+            EntityRelation.dst_type == EntityType.DOCUMENT,
+        )
+        .all()
+    )
+    for rel in rels:
+        doc_ids.add(rel.dst_id)
+    atts = db.query(Attachment).filter(Attachment.requirement_id == r.id).all()
+    for a in atts:
+        if a.document_id:
+            doc_ids.add(a.document_id)
+    if not doc_ids:
+        return []
+    rows = (
+        db.query(DocumentChunk)
+        .filter(DocumentChunk.document_id.in_(doc_ids))
+        .order_by(DocumentChunk.document_id, DocumentChunk.seq)
+        .limit(limit)
+        .all()
+    )
+    return [
+        {
+            "id": c.id,
+            "document_id": c.document_id,
+            "seq": c.seq,
+            "heading": c.heading,
+            "text": c.text[:800],
+        }
+        for c in rows
+    ]
 
 
 def gather_context(
@@ -162,10 +217,11 @@ def gather_context(
         bundle["subgraphs"].append(expand_product(db, product_id, depth=hop))
 
     if requirement_id:
-        r = db.query(Requirement).options(joinedload(Requirement.attributes)).filter(Requirement.id == requirement_id).first()
-        if r:
-            bundle["seed_requirement"] = _req_dump(r)
-            if r.product_id:
+        exp = expand_requirement(db, requirement_id)
+        if exp:
+            bundle["seed_requirement"] = exp
+            r = db.get(Requirement, requirement_id)
+            if r and r.product_id:
                 bundle["subgraphs"].append(expand_product(db, r.product_id, depth=hop))
 
     ids = list(requirement_ids or [])
@@ -199,9 +255,15 @@ def gather_context(
             if emb.entity_type == EntityType.PRODUCT:
                 bundle["subgraphs"].append(expand_product(db, emb.entity_id, depth=hop))
             elif emb.entity_type == EntityType.REQUIREMENT:
-                r = db.query(Requirement).get(emb.entity_id)
+                r = db.get(Requirement, emb.entity_id)
                 if r and r.product_id:
                     bundle["subgraphs"].append(expand_product(db, r.product_id, depth=1))
+            elif emb.entity_type == EntityType.CHUNK:
+                ch = db.get(DocumentChunk, emb.entity_id)
+                if ch:
+                    bundle.setdefault("chunks", []).append(
+                        {"id": ch.id, "document_id": ch.document_id, "seq": ch.seq, "text": ch.text[:800]}
+                    )
 
     # уникализируем подграфы
     seen_p: set[int] = set()
@@ -230,6 +292,43 @@ def gather_context(
             }
             for rel in rels
         ]
+    bundle["budget_chars"] = settings.context_budget_chars
+    return pack_budget(bundle)
+
+
+def pack_budget(bundle: dict[str, Any], budget: int | None = None) -> dict[str, Any]:
+    """Слои: seed → родители → чанки упоминаний → подписи рисунков → остальные требования."""
+    budget = budget or settings.context_budget_chars
+    used = 0
+
+    def take(s: str, cap: int) -> str:
+        nonlocal used
+        left = budget - used
+        if left <= 0:
+            return ""
+        piece = (s or "")[: min(cap, left)]
+        used += len(piece)
+        return piece
+
+    seed = bundle.get("seed_requirement") or {}
+    if seed.get("text"):
+        seed["text"] = take(seed["text"], 2000)
+    for p in seed.get("parents") or []:
+        p["text"] = take(p.get("text") or "", 400)
+    for a in seed.get("attachments") or []:
+        a["text"] = take(a.get("text") or "", 600)
+    for c in seed.get("chunks") or []:
+        c["text"] = take(c.get("text") or "", 600)
+    for r in bundle.get("requirements") or []:
+        r["text"] = take(r.get("text") or "", 400)
+        attrs = r.get("attributes") or {}
+        for k in list(attrs)[8:]:
+            attrs.pop(k, None)
+    for h in bundle.get("hits") or []:
+        h["text"] = take(h.get("text") or "", 240)
+    for c in bundle.get("chunks") or []:
+        c["text"] = take(c.get("text") or "", 500)
+    bundle["packed_chars"] = used
     return bundle
 
 
@@ -258,6 +357,10 @@ def context_as_prompt(bundle: dict[str, Any]) -> str:
             parts.append(f"↑ источник{mark}: {p.get('code')} {(p.get('text') or '')[:400]}")
         for a in seed.get("attachments") or []:
             parts.append(f"файл {a.get('filename')}: {(a.get('text') or '')[:800]}")
+        for c in seed.get("chunks") or []:
+            parts.append(f"чанк {c.get('document_id')}/{c.get('seq')}: {(c.get('text') or '')[:500]}")
+        for ill in seed.get("illustrations") or []:
+            parts.append(f"рис. {ill.get('id')} {ill.get('caption') or ill.get('filename')} {ill.get('url')}")
         for k, v in (seed.get("attributes") or {}).items():
             parts.append(f"  {k}: {str(v)[:400]}")
     for sg in bundle.get("subgraphs", []):

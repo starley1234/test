@@ -35,6 +35,7 @@ class DocumentKind(str, enum.Enum):
     MACRO_DOC = "macro_doc"  # .docm / документ со скриптами
     PARSED_JSON = "parsed_json"
     XLSX = "xlsx"
+    IMAGE = "image"
     OTHER = "other"
 
 
@@ -67,6 +68,7 @@ class EntityType(str, enum.Enum):
     REQUIREMENT = "requirement"
     ILLUSTRATION = "illustration"
     DOCUMENT = "document"
+    CHUNK = "chunk"
 
 
 class Document(Base):
@@ -176,6 +178,20 @@ class RequirementRevision(Base):
     text: Mapped[str] = mapped_column(Text)
     attributes: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
     superseded_at: Mapped[datetime] = mapped_column(DateTime, server_default=func.now())
+
+
+class DocumentChunk(Base):
+    """Кусок сырого текста файла. Двойник не режем — это индекс для маленьких окон."""
+
+    __tablename__ = "document_chunks"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    document_id: Mapped[int] = mapped_column(ForeignKey("documents.id"), index=True)
+    seq: Mapped[int] = mapped_column(Integer, default=0)
+    heading: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    text: Mapped[str] = mapped_column(Text)
+    char_start: Mapped[int] = mapped_column(Integer, default=0)
+    char_end: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class Illustration(Base):

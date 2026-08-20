@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     max_parallel_jobs: int = 3
     guest_pipelines: bool = True
     guest_max_reqs: int = 8
+    chunk_chars: int = 1200
+    chunk_overlap: int = 80
+    context_budget_chars: int = 10000
 
     admin_username: str = "admin"
     admin_password: str = "admin"
