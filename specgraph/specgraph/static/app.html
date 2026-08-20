@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SpecGraph — конструктор</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            ink: { 900: "#0b1f33", 800: "#123049", 700: "#1a4060", 100: "#e8eef4" },
+            steel: { 50: "#f4f7fa", 100: "#e6edf3", 400: "#7a8fa3", 600: "#3d5a73" },
+            accent: { DEFAULT: "#1b6fbf", dark: "#145a9c" }
+          },
+          fontFamily: { sans: ["IBM Plex Sans", "Segoe UI", "system-ui", "sans-serif"] }
+        }
+      }
+    };
+  </script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+</head>
+<body class="bg-steel-50 text-ink-900 font-sans min-h-screen">
+  <header class="bg-ink-900 text-white">
+    <div class="max-w-5xl mx-auto px-5 py-4 flex items-center justify-between gap-4">
+      <div>
+        <div class="text-lg font-semibold tracking-tight">SpecGraph</div>
+        <div class="text-sm text-steel-400">требования изделия → проверка → файл</div>
+      </div>
+      <a href="/dev" class="text-sm text-steel-100/80 hover:text-white underline-offset-2 hover:underline">Для разработчика</a>
+    </div>
+  </header>
+
+  <main class="max-w-5xl mx-auto px-5 py-8 space-y-8">
+    <ol class="grid grid-cols-3 gap-3 text-sm">
+      <li id="st1" class="rounded-lg border border-accent bg-white px-3 py-2 font-medium">1. Файлы</li>
+      <li id="st2" class="rounded-lg border border-steel-100 bg-white px-3 py-2 text-steel-600">2. Собрать базу</li>
+      <li id="st3" class="rounded-lg border border-steel-100 bg-white px-3 py-2 text-steel-600">3. Результат</li>
+    </ol>
+
+    <section class="bg-white rounded-xl border border-steel-100 shadow-sm p-6">
+      <h1 class="text-xl font-semibold mb-1">Загрузите спецификацию</h1>
+      <p class="text-steel-600 text-sm mb-4">Word, Excel или JSON. Можно несколько файлов сразу — спецификация и приложения.</p>
+      <label id="drop" class="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-steel-400/40 rounded-xl py-12 px-4 cursor-pointer hover:border-accent hover:bg-steel-50">
+        <span class="font-medium">Перетащите файлы сюда или нажмите</span>
+        <span class="text-sm text-steel-600" id="dropHint">ничего не выбрано</span>
+        <input id="files" type="file" multiple class="sr-only" />
+      </label>
+      <ul id="queue" class="mt-3 text-sm text-steel-700 space-y-1"></ul>
+      <div class="mt-5 flex flex-wrap items-center gap-3">
+        <button id="go" disabled class="bg-accent hover:bg-accent-dark disabled:opacity-40 text-white font-semibold rounded-lg px-5 py-2.5">
+          Собрать базу
+        </button>
+        <button id="clear" type="button" class="text-steel-600 text-sm underline">очистить список</button>
+      </div>
+      <div class="mt-4 h-1.5 bg-steel-100 rounded-full overflow-hidden"><div id="bar" class="h-full bg-accent w-0 transition-all"></div></div>
+      <p id="msg" class="mt-2 text-sm text-steel-600">Шаг 1: положите файлы</p>
+      <div id="feed" class="mt-3 text-xs text-steel-600 space-y-1 max-h-32 overflow-auto"></div>
+      <div id="report" class="mt-3 text-sm hidden"></div>
+    </section>
+
+    <section class="grid md:grid-cols-3 gap-4">
+      <div class="bg-white rounded-xl border border-steel-100 p-4">
+        <div class="text-2xl font-semibold" id="nDoc">0</div>
+        <div class="text-sm text-steel-600">документов</div>
+      </div>
+      <div class="bg-white rounded-xl border border-steel-100 p-4">
+        <div class="text-2xl font-semibold" id="nReq">0</div>
+        <div class="text-sm text-steel-600">требований</div>
+      </div>
+      <div class="bg-white rounded-xl border border-steel-100 p-4">
+        <div class="text-2xl font-semibold" id="nProd">0</div>
+        <div class="text-sm text-steel-600">изделий</div>
+      </div>
+    </section>
+
+    <section class="bg-white rounded-xl border border-steel-100 shadow-sm p-6">
+      <h2 class="text-lg font-semibold mb-1">Что сделать с базой</h2>
+      <p class="text-sm text-steel-600 mb-4">ИИ смотрит карточки в базе. Если ключа нет — будет пометка «эвристика», не «готово».</p>
+      <div class="flex flex-wrap gap-3">
+        <button data-pipe="validate-requirements" class="act bg-ink-800 hover:bg-ink-700 text-white rounded-lg px-4 py-2.5 font-medium">Проверить требования</button>
+        <button data-pipe="help-write" class="act bg-white border border-ink-800 text-ink-800 rounded-lg px-4 py-2.5 font-medium">Помочь сформулировать</button>
+        <button data-pipe="summarize" class="act bg-white border border-steel-400 text-ink-800 rounded-lg px-4 py-2.5 font-medium">Кратко пересказать</button>
+        <button type="button" id="dlDrafts" class="bg-white border border-steel-400 text-ink-800 rounded-lg px-4 py-2.5 font-medium">Черновики правок (Excel/MD)</button>
+      </div>
+      <p id="pipeMsg" class="mt-3 text-sm text-steel-600">Сначала соберите базу, затем нажмите одну кнопку.</p>
+      <div id="result" class="mt-4 hidden">
+        <div id="dl" class="flex flex-wrap gap-3 mb-3"></div>
+        <article id="out" class="prose prose-sm max-w-none bg-steel-50 rounded-lg p-4 whitespace-pre-wrap text-sm leading-relaxed"></article>
+      </div>
+    </section>
+
+    <section>
+      <div class="flex items-center justify-between gap-3 mb-2">
+        <h2 class="text-lg font-semibold">Что уже в базе</h2>
+        <label class="text-sm text-steel-600"><input type="checkbox" id="onlyFail" /> только с замечаниями</label>
+      </div>
+      <div id="cards" class="space-y-2 text-sm"></div>
+    </section>
+  </main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let bag = [];
+let lastDoc = null;
+
+function esc(s){return String(s||'').replace(/[&<>]/g,c=>({ '&':'&amp;','<':'&lt;','>':'&gt;' }[c]));}
+
+function setStep(n) {
+  [1,2,3].forEach(i => {
+    const el = $('st'+i);
+    el.className = 'rounded-lg border px-3 py-2 ' + (i===n ? 'border-accent bg-white font-medium' : 'border-steel-100 bg-white text-steel-600');
+  });
+}
+
+function renderQueue() {
+  $('queue').innerHTML = bag.map(f => `<li>${esc(f.name)}</li>`).join('');
+  $('dropHint').textContent = bag.length ? bag.length + ' файл(ов)' : 'ничего не выбрано';
+  $('go').disabled = !bag.length;
+}
+
+function addFiles(list) {
+  for (const f of list) if (![...bag].some(x => x.name===f.name && x.size===f.size)) bag.push(f);
+  renderQueue();
+}
+
+$('drop').addEventListener('dragover', e => { e.preventDefault(); $('drop').classList.add('border-accent'); });
+$('drop').addEventListener('dragleave', () => $('drop').classList.remove('border-accent'));
+$('drop').addEventListener('drop', e => { e.preventDefault(); addFiles(e.dataTransfer.files); });
+$('files').addEventListener('change', e => addFiles(e.target.files));
+$('clear').onclick = () => { bag = []; renderQueue(); };
+
+async function refreshStats() {
+  try {
+    const ov = await fetch('/overview').then(r => r.json());
+    const t = ov.totals || {};
+    $('nDoc').textContent = t.documents ?? 0;
+    $('nReq').textContent = t.requirements ?? 0;
+    $('nProd').textContent = t.products ?? 0;
+    const failOnly = $('onlyFail') && $('onlyFail').checked;
+    const url = lastDoc
+      ? '/requirements?document_id='+lastDoc+(failOnly?'&review=fail':'')
+      : '/overview';
+    let rec = [];
+    if (lastDoc) rec = await fetch(url).then(r => r.json());
+    else rec = ov.recent_requirements || [];
+    $('cards').innerHTML = rec.slice(0, 20).map(r => {
+      const stub = r.extra && r.extra.stub;
+      const appx = r.extra && r.extra.appendix;
+      const rv = r.review || {};
+      const badge = stub ? 'stub' : appx ? 'приложение' : (rv.pass === false ? 'замечание' : (rv.pass === true ? 'ок' : ''));
+      const draft = r.draft_text
+        ? `<div class="mt-1 text-steel-600">предложение (${esc(r.draft_source||'')}): ${esc(r.draft_text.slice(0,220))}</div>` : '';
+      return `<div class="bg-white border border-steel-100 rounded-lg px-3 py-2">
+        <span class="font-mono text-accent">${esc(r.code)}</span>
+        ${badge ? `<span class="ml-2 text-xs">${esc(badge)}</span>` : ''}
+        ${rv.mode ? `<span class="text-xs text-steel-600"> · ${esc(rv.mode)}</span>` : ''}
+        <div>${esc((r.text||'').slice(0,180))}</div>${draft}</div>`;
+    }).join('') || '<p class="text-steel-600">Пока пусто — соберите базу.</p>';
+    if (rec[0]) lastDoc = rec[0].document_id;
+    ;
+  } catch (_) {}
+}
+
+$('go').onclick = async () => {
+  if (!bag.length) return;
+  setStep(2);
+  $('go').disabled = true;
+  $('msg').textContent = 'Читаем файлы…';
+  $('feed').innerHTML = '';
+  const fd = new FormData();
+  for (const f of bag) fd.append('files', f);
+  try {
+    const res = await fetch('/index', { method: 'POST', body: fd });
+    if (!res.ok) throw new Error(await res.text());
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    while (true) {
+      const {value, done} = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, {stream: true});
+      const lines = buf.split('\n');
+      buf = lines.pop();
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        const ev = JSON.parse(line);
+        if (ev.event === 'file_start') {
+          $('bar').style.width = Math.round(100*(ev.index-1)/ev.total) + '%';
+          $('msg').textContent = ev.filename;
+        }
+        if (ev.event === 'file_done') {
+          lastDoc = ev.document_id;
+          const r = ev.ingest_report || {};
+          $('feed').insertAdjacentHTML('afterbegin', `<div>✓ ${esc(ev.filename)} — карточек ${r.cards??'?'}, stub ${r.stubs??0}</div>`);
+        }
+        if (ev.event === 'file_error') {
+          $('feed').insertAdjacentHTML('afterbegin', `<div class="text-red-700">✗ ${esc(ev.filename)}: ${esc(ev.error)}</div>`);
+        }
+        if (ev.event === 'done') {
+          $('bar').style.width = '100%';
+          const reps = ev.ingest_reports || [];
+          const cards = reps.reduce((s,x)=>s+(x.cards||0),0);
+          const stubs = reps.reduce((s,x)=>s+(x.stubs||0),0);
+          $('report').classList.remove('hidden');
+          $('report').innerHTML = `Разбор: карточек <b>${cards}</b>, заглушек (ещё не загружены) <b>${stubs}</b>.`;
+          $('msg').textContent = cards ? 'База собрана. Можно проверять.' : 'Карточек не нашли — проверьте, что в Word есть таблицы Идентификатор + Содержание.';
+          setStep(3);
+        }
+      }
+    }
+    bag = [];
+    renderQueue();
+    await refreshStats();
+  } catch (e) {
+    $('msg').textContent = e.message;
+  }
+  $('go').disabled = false;
+};
+
+async function runPipe(name) {
+  $('pipeMsg').textContent = 'ИИ работает…';
+  $('result').classList.add('hidden');
+  const docs = await fetch('/documents').then(r => r.json());
+  const docId = lastDoc || (docs[0] && docs[0].id);
+  if (!docId) { $('pipeMsg').textContent = 'Сначала соберите базу.'; return; }
+  const reqs = await fetch('/requirements?document_id='+docId).then(r => r.json());
+  const ids = reqs.filter(r => !(r.extra && (r.extra.stub || r.extra.appendix))).map(r => r.id);
+  const res = await fetch('/pipelines/runs/'+name, {
+    method: 'POST', headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({document_id: docId, requirement_ids: ids}),
+  });
+  if (!res.ok) { $('pipeMsg').textContent = await res.text(); return; }
+  const started = await res.json();
+  const stream = await fetch('/pipelines/runs/'+started.run_id+'/stream');
+  const reader = stream.body.getReader();
+  const dec = new TextDecoder();
+  let buf = '';
+  let last = null;
+  while (true) {
+    const {value, done} = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, {stream:true});
+    const lines = buf.split('\n');
+    buf = lines.pop();
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      const ev = JSON.parse(line);
+      if (ev.step) $('pipeMsg').textContent = ev.step;
+      if (ev.event === 'done') last = ev.result;
+    }
+  }
+  if (!last) { $('pipeMsg').textContent = 'Нет результата'; return; }
+  const d = last.downloads || {};
+  const links = [];
+  if (d.xlsx) links.push(`<a class="inline-block bg-accent text-white rounded-lg px-4 py-2 font-medium" href="${d.xlsx}">Скачать Excel</a>`);
+  if (d.md) links.push(`<a class="inline-block border border-ink-800 rounded-lg px-4 py-2 font-medium" href="${d.md}">Markdown</a>`);
+  if (d.docx || last.download) links.push(`<a class="inline-block border border-steel-400 rounded-lg px-4 py-2" href="${d.docx || last.download}">Word</a>`);
+  $('dl').innerHTML = links.join('') || '<span class="text-steel-600">файл не собран</span>';
+  $('out').textContent = last.output || last.result || 'готово';
+  $('result').classList.remove('hidden');
+  const mode = last.mode || 'heuristic';
+  $('pipeMsg').textContent = (mode === 'llm' ? 'Модель. ' : 'Эвристика (нет ключа). ') + 'Двойник не менялся.';
+  setStep(3);
+  refreshStats();
+}
+
+document.querySelectorAll('.act').forEach(b => b.onclick = () => runPipe(b.dataset.pipe));
+$('onlyFail').onchange = refreshStats;
+$('dlDrafts').onclick = async () => {
+  const q = lastDoc ? ('?document_id='+lastDoc) : '';
+  const r = await fetch('/drafts/export'+q).then(x => x.json());
+  const d = r.downloads || {};
+  $('result').classList.remove('hidden');
+  $('dl').innerHTML =
+    (d.xlsx ? `<a class="inline-block bg-accent text-white rounded-lg px-4 py-2" href="${d.xlsx}">Excel черновиков</a> ` : '') +
+    (d.md ? `<a class="inline-block border border-ink-800 rounded-lg px-4 py-2" href="${d.md}">Markdown</a>` : '');
+  $('out').textContent = (r.rows||[]).map(x => x.code + ' → ' + x.proposed).join('\\n') || 'Сначала «Помочь сформулировать».';
+  $('pipeMsg').textContent = r.count ? ('Черновиков: '+r.count+' — отдайте сотруднику, файл-двойник не менялся') : 'Черновиков нет';
+};
+refreshStats();
+renderQueue();
+</script>
+</body>
+</html>

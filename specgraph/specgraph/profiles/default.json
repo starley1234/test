@@ -1,0 +1,30 @@
+{
+  "_comment": "Если в Word поменяли подписи полей — правьте только этот файл.",
+  "card_must_have": ["идентификатор", "содержание"],
+  "card_fields": {
+    "идентификатор": "id",
+    "содержание": "text",
+    "обоснование": "rationale",
+    "источник требования": "source",
+    "источник": "source",
+    "пояснение": "note",
+    "допущение": "assumption",
+    "верификация": "verification",
+    "приоритет": "priority"
+  },
+  "empty_source": ["-", "–", "—", "нет", "n/a"],
+  "id_heading": {
+    "max_len": 160,
+    "must_contain": ".",
+    "no_spaces": true
+  },
+  "product_heading_words": ["изделие", "блок", "система", "устройство", "состав"],
+  "kind_in_code": {
+    "FNCT": "functional",
+    "INTF": "interface",
+    "TIME": "performance",
+    "DATA": "design",
+    "HWRQ": "design",
+    "FCTR": "performance"
+  }
+}

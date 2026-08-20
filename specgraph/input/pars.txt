@@ -1,0 +1,34 @@
+"""Извлекатель Word для SpecGraph (улучшенная версия исходного скрипта).
+
+Было: плоские paragraph/table + Natasha, картинки и Heading терялись.
+Стало: заголовки, иллюстрации, merged-ячейки, тех.ID требований.
+
+Запуск как сервис:
+    python pars.txt            # FastAPI :8000  POST /extract
+    python pars.txt mcp        # MCP stdio (если установлен mcp)
+
+Предпочтительный путь — пакет specgraph (тот же алгоритм):
+    from specgraph.ingest.word_extractor import extract_structure_bytes
+"""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+# позволяем запускать файл из input/ без установки
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+if __name__ == "__main__":
+    import uvicorn
+
+    from specgraph.ingest.word_extractor import build_extractor_app
+
+    if len(sys.argv) > 1 and sys.argv[1] == "mcp":
+        print("MCP-обёртка перенесена в specgraph.ingest.word_extractor; используйте API /extract")
+        sys.exit(0)
+    app = build_extractor_app()
+    print("Запуск на порту 8000. API: POST /extract")
+    uvicorn.run(app, host="0.0.0.0", port=8000)
