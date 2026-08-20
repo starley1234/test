@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SpecGraph — пространство</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>tailwind.config = { theme: { extend: { colors: { ink: { 900: "#0b1f33", 800: "#123049" }, steel: { 50: "#f4f7fa", 100: "#e6edf3", 600: "#3d5a73" }, accent: { DEFAULT: "#1b6fbf" } } } } };</script>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+</head>
+<body class="bg-steel-50 text-ink-900 font-sans min-h-screen">
+  <header class="bg-ink-900 text-white">
+    <div class="max-w-6xl mx-auto px-5 py-4 flex justify-between items-center">
+      <div>
+        <div class="text-lg font-semibold">SpecGraph</div>
+        <div class="text-sm text-white/60">рабочее пространство документов → вопросы к графу</div>
+      </div>
+      <a href="/dev" class="text-sm text-white/70 underline">для разработчика</a>
+    </div>
+  </header>
+
+  <main class="max-w-6xl mx-auto px-5 py-6 grid md:grid-cols-[minmax(260px,340px)_1fr] gap-5">
+    <section class="bg-white rounded-xl border border-steel-100 p-5 h-fit">
+      <h1 class="text-lg font-semibold mb-1">Пространство</h1>
+      <p class="text-sm text-steel-600 mb-3">Файлы индексируются в граф (карточки, связи, при необходимости чанки). Это не «топ-3 чанка».</p>
+      <label class="flex flex-col items-center border-2 border-dashed rounded-xl py-8 cursor-pointer hover:border-accent">
+        <span class="font-medium">Закинуть документы</span>
+        <span class="text-sm text-steel-600" id="dropHint">ничего не выбрано</span>
+        <input id="files" type="file" multiple class="sr-only" />
+      </label>
+      <ul id="queue" class="mt-2 text-sm text-steel-700 space-y-0.5"></ul>
+      <div class="mt-3 flex gap-3 items-center">
+        <button id="go" disabled class="bg-accent disabled:opacity-40 text-white font-semibold rounded-lg px-4 py-2">В пространство</button>
+        <button id="clear" type="button" class="text-sm underline text-steel-600">очистить</button>
+      </div>
+      <div class="mt-3 h-1.5 bg-steel-100 rounded-full overflow-hidden"><div id="bar" class="h-full bg-accent w-0"></div></div>
+      <p id="msg" class="mt-2 text-sm text-steel-600"></p>
+      <label class="mt-4 flex items-start gap-2 text-sm">
+        <input type="checkbox" id="incGraph" class="mt-1" />
+        <span>Подключать знания вне пространства (вышестоящие, загруженные коллегами)</span>
+      </label>
+      <h2 class="text-sm font-medium text-steel-600 mt-5 mb-2">Документы</h2>
+      <div id="docs" class="space-y-2 text-sm"></div>
+    </section>
+
+    <section class="bg-white rounded-xl border border-steel-100 p-5 flex flex-col min-h-[32rem]">
+      <h2 class="text-lg font-semibold mb-1">Чат с пространством</h2>
+      <p class="text-sm text-steel-600 mb-3">Каталог и счётчики — из БД. Поиск по коду — индекс. «Упоминание про…» — текст + вектор.</p>
+      <div class="flex flex-wrap gap-2 mb-3 text-xs" id="hints">
+        <button type="button" class="hint border rounded-full px-3 py-1">Какие документы загружены?</button>
+        <button type="button" class="hint border rounded-full px-3 py-1">Сколько требований в Документе 1</button>
+        <button type="button" class="hint border rounded-full px-3 py-1">Найди все зависимые требования</button>
+        <button type="button" class="hint border rounded-full px-3 py-1">Найди требования в которых есть упоминания про вольты</button>
+        <button type="button" class="hint border rounded-full px-3 py-1">Найди требования, информация о которых не подгружена</button>
+      </div>
+      <div id="chat" class="flex-1 overflow-auto space-y-3 text-sm mb-3 min-h-[16rem]"></div>
+      <form id="form" class="flex gap-2">
+        <input id="q" class="flex-1 border rounded-lg px-3 py-2" placeholder="Спросите пространство…" autocomplete="off" />
+        <button class="bg-ink-800 text-white rounded-lg px-4 py-2 font-medium">Спросить</button>
+      </form>
+    </section>
+  </main>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s||'').replace(/[&<>]/g,c=>({ '&':'&amp;','<':'&lt;','>':'&gt;' }[c]));
+let bag = [];
+
+function renderQueue() {
+  $('queue').innerHTML = bag.map(f => `<li>${esc(f.name)}</li>`).join('');
+  $('dropHint').textContent = bag.length ? bag.length + ' файл(ов)' : 'ничего не выбрано';
+  $('go').disabled = !bag.length;
+}
+$('files').onchange = e => { bag = [...bag, ...e.target.files]; renderQueue(); };
+$('clear').onclick = () => { bag = []; renderQueue(); };
+
+async function loadWs() {
+  const ws = await fetch('/workspace', {credentials:'same-origin'}).then(r => r.json());
+  const docs = ws.documents || [];
+  $('incGraph').checked = !!ws.include_graph;
+  $('docs').innerHTML = docs.map(d => `
+    <div class="border border-steel-100 rounded-lg px-3 py-2">
+      <div class="font-medium">${d.n}. ${esc(d.filename)}</div>
+      <div class="text-steel-600 text-xs">карточек ${d.cards} · stub ${d.stubs||0}</div>
+    </div>`).join('') || '<p class="text-steel-600">пусто — закиньте файлы</p>';
+}
+$('incGraph').onchange = () => fetch('/workspace', {
+  method:'PATCH', credentials:'same-origin', headers:{'Content-Type':'application/json'},
+  body: JSON.stringify({include_graph: $('incGraph').checked}),
+});
+
+function bubble(role, html, route) {
+  const el = document.createElement('div');
+  el.className = role === 'me' ? 'text-right' : '';
+  const tag = route ? `<span class="text-xs text-steel-600">${esc(route)}</span>` : '';
+  el.innerHTML = role === 'me'
+    ? `<div class="inline-block bg-ink-800 text-white rounded-xl px-3 py-2 text-left max-w-[90%]">${html}</div>`
+    : `<div class="inline-block bg-steel-50 border border-steel-100 rounded-xl px-3 py-2 text-left max-w-[90%] whitespace-pre-wrap">${tag}${tag?'<br/>':''}${html}</div>`;
+  $('chat').appendChild(el);
+  $('chat').scrollTop = $('chat').scrollHeight;
+}
+
+$('go').onclick = async () => {
+  $('go').disabled = true;
+  $('msg').textContent = 'индексируем…';
+  const fd = new FormData();
+  for (const f of bag) fd.append('files', f);
+  const res = await fetch('/index', { method: 'POST', body: fd, credentials:'same-origin' });
+  const reader = res.body.getReader();
+  const dec = new TextDecoder();
+  let buf = '';
+  while (true) {
+    const {value, done} = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, {stream:true});
+    const lines = buf.split('\n'); buf = lines.pop();
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      const ev = JSON.parse(line);
+      if (ev.event === 'file_start') {
+        $('bar').style.width = Math.round(100*(ev.index-1)/ev.total)+'%';
+        $('msg').textContent = ev.filename;
+      }
+      if (ev.event === 'done') {
+        $('bar').style.width = '100%';
+        $('msg').textContent = 'в пространстве';
+        const ids = (ev.documents||[]).map(d => d.id);
+        if (ids.length) await fetch('/workspace', {
+          method:'PATCH', credentials:'same-origin', headers:{'Content-Type':'application/json'},
+          body: JSON.stringify({document_ids: ids}),
+        });
+      }
+    }
+  }
+  bag = []; renderQueue();
+  await loadWs();
+  $('go').disabled = false;
+};
+
+async function ask(text) {
+  const q = (text || $('q').value || '').trim();
+  if (!q) return;
+  $('q').value = '';
+  bubble('me', esc(q));
+  const r = await fetch('/ask', {
+    method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({question: q, include_graph: $('incGraph').checked}),
+  });
+  const j = await r.json();
+  bubble('bot', esc(j.answer || r.statusText), j.route);
+}
+
+$('form').onsubmit = e => { e.preventDefault(); ask(); };
+document.querySelectorAll('.hint').forEach(b => b.onclick = () => { $('q').value = b.textContent; ask(b.textContent); });
+loadWs();
+</script>
+</body>
+</html>
