@@ -150,6 +150,23 @@ def upload_parsed_json(body: IngestJsonRequest, db: Session = Depends(get_db)):
     return DocumentOut(id=doc.id, filename=doc.filename, kind=doc.kind.value, title=doc.title, status=doc.status)
 
 
+@router.get("/workspace")
+def get_workspace(db: Session = Depends(get_db)):
+    from specgraph.retrieval.ask import workspace
+
+    return workspace(db)
+
+
+@router.post("/ask")
+def ask_workspace(body: dict = Body(...), db: Session = Depends(get_db)):
+    from specgraph.retrieval.ask import ask
+
+    q = str(body.get("question") or body.get("q") or "").strip()
+    if not q:
+        raise HTTPException(400, "нужен question")
+    return ask(db, q)
+
+
 @router.get("/documents", response_model=list[DocumentOut])
 def list_documents(db: Session = Depends(get_db)):
     docs = db.query(Document).order_by(Document.id.desc()).all()
