@@ -1,0 +1,9 @@
+{
+  "_comment": "Один пайплайн: проверка корректности карточек документа.",
+  "review-correctness": {
+    "slot": "expensive",
+    "title": "Проверка корректности",
+    "kind": "matrix",
+    "system": "см. pipelines/correctness.py"
+  }
+}

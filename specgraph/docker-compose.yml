@@ -1,0 +1,33 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: specgraph
+      POSTGRES_PASSWORD: specgraph
+      POSTGRES_DB: specgraph
+    ports:
+      - "5432:5432"
+    volumes:
+      - specgraph_pg:/var/lib/postgresql/data
+
+  tika:
+    image: apache/tika:2.9.2.1-full
+    ports:
+      - "9998:9998"
+
+  api:
+    build: .
+    ports:
+      - "8000:8000"
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://specgraph:specgraph@db:5432/specgraph
+      TIKA_SERVER_URL: http://tika:9998
+    depends_on:
+      - db
+      - tika
+    volumes:
+      - ./data:/app/data
+
+volumes:
+  specgraph_pg:

@@ -1,0 +1,855 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>SpecGraph</title>
+  <style>
+    :root, html[data-theme="night"] {
+      --bg: #0e1218; --panel: #161c24; --line: #2a3442; --surface: #12181f;
+      --text: #e8eef4; --muted: #8b9aab; --acc: #3d9cf0;
+      --ok: #3ecf8e; --warn: #e6b84d; --bad: #e06c75; --hover: #1f2833;
+    }
+    html[data-theme="day"] {
+      --bg: #f4f6f8; --panel: #ffffff; --line: #d5dde6; --surface: #eef2f6;
+      --text: #1a2330; --muted: #5b6b7c; --acc: #1b6fbf;
+      --ok: #1a8f5a; --warn: #b8860b; --bad: #c0392b; --hover: #e4ebf2;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 14px/1.45 "IBM Plex Sans", "Segoe UI", system-ui, sans-serif; background: var(--bg); color: var(--text); }
+    header { padding: 12px 20px; border-bottom: 1px solid var(--line); display: flex; gap: 16px; align-items: center; justify-content: space-between; flex-wrap: wrap; }
+    header h1 { font-size: 18px; margin: 0; }
+    header .sub { color: var(--muted); font-size: 13px; }
+    nav { display: flex; gap: 4px; flex-wrap: wrap; }
+    nav a { color: var(--muted); text-decoration: none; padding: 6px 10px; border-radius: 8px; }
+    nav a.on, nav a:hover { background: var(--hover); color: var(--text); }
+    .bar { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    button, .btn { background: var(--acc); color: #041018; border: 0; border-radius: 8px; padding: 8px 14px; font-weight: 600; cursor: pointer; font-size: 13px; }
+    button:disabled { opacity: .45; cursor: not-allowed; }
+    button.ghost { background: transparent; color: var(--text); border: 1px solid var(--line); }
+    button.danger { background: transparent; color: var(--bad); border: 1px solid #5a2a30; }
+    .layout { display: grid; grid-template-columns: 340px 1fr 360px; height: calc(100vh - 58px); }
+    .page { display: none; min-height: calc(100vh - 58px); }
+    .page.on { display: block; }
+    .page.browse { padding: 20px 24px 40px; max-width: 1100px; }
+    .col { overflow: auto; border-right: 1px solid var(--line); padding: 16px; }
+    .col:last-child { border-right: 0; }
+    h2 { font-size: 12px; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin: 18px 0 8px; }
+    h2:first-child { margin-top: 0; }
+    h3 { font-size: 20px; margin: 0 0 6px; }
+    .crumbs { color: var(--muted); font-size: 13px; margin-bottom: 14px; }
+    .crumbs a { color: var(--acc); text-decoration: none; }
+    .drop {
+      border: 1.5px dashed var(--line); border-radius: 12px; padding: 22px 14px;
+      text-align: center; color: var(--muted); background: var(--surface); cursor: pointer;
+    }
+    .drop.over { border-color: var(--acc); color: var(--acc); background: #132033; }
+    .drop b { color: var(--text); display: block; margin-bottom: 4px; }
+    .queue { margin-top: 10px; }
+    .qfile { display: flex; justify-content: space-between; gap: 8px; align-items: center; padding: 6px 8px; border-radius: 8px; background: var(--surface); margin-bottom: 4px; font-size: 12px; }
+    .qfile .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tag { display: inline-block; font-size: 10px; padding: 1px 6px; border-radius: 999px; background: var(--hover); color: var(--text); border: 1px solid var(--line); }
+    .tag.spec { background: color-mix(in srgb, var(--acc) 18%, var(--surface)); color: var(--acc); border-color: var(--acc); }
+    .tag.attachment { background: color-mix(in srgb, var(--warn) 20%, var(--surface)); color: var(--warn); border-color: var(--warn); }
+    .tag.stub { background: color-mix(in srgb, var(--warn) 20%, var(--surface)); color: var(--warn); border-color: var(--warn); }
+    .tag.ok { background: color-mix(in srgb, var(--ok) 18%, var(--surface)); color: var(--ok); border-color: var(--ok); }
+    .tag.err { background: color-mix(in srgb, var(--bad) 18%, var(--surface)); color: var(--bad); border-color: var(--bad); }
+    .tag.run { background: color-mix(in srgb, var(--acc) 16%, var(--surface)); color: var(--acc); border-color: var(--acc); }
+    .stat { display: flex; gap: 8px; flex-wrap: wrap; }
+    .stat div { background: var(--surface); padding: 8px 10px; border-radius: 8px; min-width: 68px; }
+    .stat b { display: block; font-size: 18px; }
+    .item { padding: 8px 10px; border-radius: 8px; cursor: pointer; margin-bottom: 4px; animation: pop .25s ease; }
+    .item:hover, .item.on { background: var(--hover); }
+    .item.new { outline: 1px solid #3d9cf055; }
+    .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; margin-bottom: 10px; }
+    .card a { color: var(--acc); text-decoration: none; }
+    .code { font-family: ui-monospace, Menlo, monospace; font-size: 12px; color: var(--acc); }
+    .feed { font-size: 12px; }
+    .feed .ev { padding: 6px 0; border-bottom: 1px solid var(--line); color: var(--muted); }
+    .feed .ev b { color: var(--text); }
+    .progress { height: 6px; background: var(--line); border-radius: 99px; overflow: hidden; margin: 10px 0; }
+    .progress > i { display: block; height: 100%; background: var(--acc); width: 0; transition: width .2s; }
+    pre { white-space: pre-wrap; background: var(--surface); padding: 10px; border-radius: 8px; font-size: 13px; }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    td, th { border-bottom: 1px solid var(--line); padding: 6px 4px; vertical-align: top; text-align: left; }
+    .muted { color: var(--muted); }
+    .rel { font-size: 12px; color: var(--muted); margin: 4px 0; }
+    input[type=search], select { width: 100%; background: var(--surface); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+    .chk { display: flex; gap: 8px; align-items: flex-start; padding: 6px 0; border-bottom: 1px solid var(--line); }
+    .tok { display: flex; gap: 10px; flex-wrap: wrap; margin: 10px 0; }
+    .tok div { background: var(--surface); padding: 10px 12px; border-radius: 8px; }
+    .tok b { font-size: 20px; display: block; }
+    @keyframes pop { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+  </style>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>SpecGraph</h1>
+      <div class="sub">индексация спецификаций и просмотр графа</div>
+    </div>
+    <nav>
+      <a href="/">Конструктор</a>
+      <a href="#/" id="nav-index">Индекс</a>
+      <a href="#/products" id="nav-products">Изделия</a>
+      <a href="#/documents" id="nav-documents">Документы</a>
+      <a href="#/pipelines" id="nav-pipelines">Пайплайны</a>
+      <a href="#/history" id="nav-history">История</a>
+      <a href="#/tree" id="nav-tree">Дерево</a>
+      <a href="#/context" id="nav-context">Контекст</a>
+    </nav>
+    <div class="bar">
+      <span class="muted" id="who">гость</span>
+      <button class="ghost" id="loginBtn">Войти</button>
+      <button class="ghost" id="regBtn">Регистрация</button>
+      <button class="ghost" id="logoutBtn" style="display:none">Выйти</button>
+      <button class="ghost" id="themeBtn" title="день / ночь">День</button>
+      <button class="danger" id="wipeBtn" style="display:none">Очистить БД</button>
+    </div>
+  </header>
+
+  <div class="page" id="page-index">
+    <div class="layout">
+      <div class="col">
+        <h2>Файлы в пакет</h2>
+        <div class="drop" id="drop">
+          <b>Перетащите сюда Word / Excel / JSON</b>
+          спецификация и вложения к требованиям
+          <div style="margin-top:10px"><input id="files" type="file" multiple /></div>
+        </div>
+        <div class="queue" id="queue"></div>
+        <div style="margin:12px 0; display:flex; gap:8px">
+          <button id="indexBtn">Индексировать</button>
+          <button class="ghost" id="clearBtn">Очистить список</button>
+        </div>
+        <div class="progress"><i id="bar"></i></div>
+        <div class="muted" id="msg">ожидание файлов</div>
+        <h2>Ход индексации</h2>
+        <div class="feed" id="feed"></div>
+      </div>
+      <div class="col">
+        <h2>База</h2>
+        <div class="stat" id="stats"></div>
+        <h2>Появившиеся сущности</h2>
+        <input type="search" id="q" placeholder="фильтр по коду или тексту…" />
+        <div id="reqs" style="margin-top:10px"></div>
+      </div>
+      <div class="col">
+        <h2>Карточка</h2>
+        <div id="card" class="muted">Выберите требование</div>
+        <h2>Документы</h2>
+        <div id="docs"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="page browse" id="page-browse"></div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+let bag = [];
+let docs = [], reqs = [], currentDoc = null, seen = new Set();
+let me = { guest: true, user: null };
+
+function applyTheme(t) {
+  document.documentElement.setAttribute('data-theme', t);
+  localStorage.setItem('specgraph-theme', t);
+  const b = $('themeBtn');
+  if (b) b.textContent = t === 'day' ? 'Ночь' : 'День';
+}
+applyTheme(localStorage.getItem('specgraph-theme') || 'night');
+
+async function refreshMe() {
+  try { me = await j('/auth/me'); } catch { me = { guest: true, user: null }; }
+  const u = me.user;
+  $('who').textContent = u ? (u.username + ' [' + (u.roles||[]).join(',') + ']') : 'гость';
+  $('loginBtn').style.display = u ? 'none' : '';
+  $('regBtn').style.display = u ? 'none' : '';
+  $('logoutBtn').style.display = u ? '' : 'none';
+  $('wipeBtn').style.display = (u && (u.roles||[]).includes('admin')) ? '' : 'none';
+}
+
+function esc(s){return String(s||'').replace(/[&<>]/g,c=>({ '&':'&amp;','<':'&lt;','>':'&gt;' }[c]));}
+async function j(url, opt) {
+  const r = await fetch(url, { credentials: 'same-origin', ...(opt||{}) });
+  if (!r.ok) throw new Error(await r.text());
+  const t = await r.text();
+  return t ? JSON.parse(t) : {};
+}
+
+function parseHash() {
+  const h = (location.hash || '#/').replace(/^#/, '') || '/';
+  const parts = h.split('/').filter(Boolean);
+  return { parts, raw: h };
+}
+
+function setNav() {
+  const p = parseHash().parts[0] || '';
+  ['index','products','documents','pipelines','history','tree','context'].forEach(k => {
+    const el = $('nav-'+k);
+    if (el) el.classList.toggle('on', (k==='index' && !p) || p === k);
+  });
+}
+
+async function route() {
+  setNav();
+  const { parts } = parseHash();
+  const a = parts[0];
+  if (!a) {
+    $('page-index').classList.add('on');
+    $('page-browse').classList.remove('on');
+    return;
+  }
+  $('page-index').classList.remove('on');
+  $('page-browse').classList.add('on');
+  const box = $('page-browse');
+  box.innerHTML = '<div class="muted">загрузка…</div>';
+  try {
+    if (a === 'products' && parts[1] && parts[2] === 'docs') {
+      await renderProductDocs(box, +parts[1]);
+    } else if (a === 'products' && parts[1]) {
+      await renderProduct(box, +parts[1]);
+    } else if (a === 'products') {
+      await renderProducts(box);
+    } else if (a === 'documents' && parts[1] && parts[2] === 'requirements') {
+      await renderDocReqs(box, +parts[1]);
+    } else if (a === 'documents' && parts[1]) {
+      await renderDocument(box, +parts[1]);
+    } else if (a === 'documents') {
+      await renderDocuments(box);
+    } else if (a === 'requirements' && parts[1]) {
+      await renderReqPage(box, +parts[1]);
+    } else if (a === 'pipelines' && parts[1]) {
+      await renderPipelinePage(box, parts[1]);
+    } else if (a === 'pipelines') {
+      await renderPipelines(box);
+    } else if (a === 'history') {
+      await renderHistory(box);
+    } else if (a === 'tree') {
+      await renderTree(box);
+    } else if (a === 'context') {
+      await renderContextLab(box);
+    } else if (a === 'diagram' && parts[1]) {
+      await renderDiagram(box, parts[1]);
+    } else {
+      box.innerHTML = '<div class="muted">нет такой страницы</div>';
+    }
+  } catch (e) {
+    box.innerHTML = '<div class="muted">'+esc(e.message)+'</div>';
+  }
+}
+
+async function renderProducts(box) {
+  const list = await j('/products');
+  box.innerHTML = `
+    <div class="crumbs"><a href="#/">Индекс</a> / Изделия</div>
+    <h3>Изделия</h3>
+    <p class="muted">${list.length} шт.</p>
+    ${list.map(p => `
+      <div class="card">
+        <a class="code" href="#/products/${p.id}">${esc(p.code)}</a>
+        <div>${esc(p.name)}</div>
+        <div class="muted">уровень ${p.level}${p.parent_id ? ' · parent #'+p.parent_id : ''}</div>
+      </div>`).join('') || '<div class="muted">нет изделий — проиндексируйте пакет</div>'}`;
+}
+
+async function renderProduct(box, id) {
+  const sg = await j('/products/'+id);
+  const p = sg.product || {};
+  const attrs = Object.entries(p.attributes||{}).map(([k,v]) => `<tr><th>${esc(k)}</th><td>${esc(v)}</td></tr>`).join('');
+  const anc = (sg.ancestors||[]).slice().reverse().map(a =>
+    `<a href="#/products/${a.id}">${esc(a.code)}</a>`).join(' / ');
+  const kids = (sg.descendants||[]).map(c =>
+    `<div class="item" onclick="location.hash='#/products/${c.id}'"><span class="code">${esc(c.code)}</span> ${esc(c.name)}</div>`).join('');
+  const reqsH = (sg.requirements||[]).map(r =>
+    `<div class="item" onclick="location.hash='#/requirements/${r.id}'"><span class="code">${esc(r.code)}</span> ${esc((r.text||'').slice(0,140))}</div>`).join('');
+  const doc = sg.document;
+  box.innerHTML = `
+    <div class="crumbs"><a href="#/">Индекс</a> / <a href="#/products">Изделия</a> / ${esc(p.code||'')}</div>
+    <h3>${esc(p.name||p.code||'Изделие')}</h3>
+    <div class="code">${esc(p.code)}</div>
+    ${anc ? '<div class="rel">входит в: '+anc+'</div>' : ''}
+    ${doc ? `<div class="rel">документ: <a href="#/documents/${doc.id}">${esc(doc.title||doc.filename)}</a></div>` : ''}
+    <p><a href="#/products/${id}/docs">Связанные документы →</a></p>
+    ${attrs ? '<h2>Атрибуты</h2><table>'+attrs+'</table>' : ''}
+    <h2>Состав</h2>${kids || '<div class="muted">нет дочерних</div>'}
+    <h2>Требования</h2>${reqsH || '<div class="muted">нет</div>'}`;
+}
+
+async function renderProductDocs(box, id) {
+  const data = await j('/products/'+id+'/documents');
+  const p = data.product || {};
+  box.innerHTML = `
+    <div class="crumbs"><a href="#/products">Изделия</a> / <a href="#/products/${id}">${esc(p.code)}</a> / Документы</div>
+    <h3>Документы изделия ${esc(p.code)}</h3>
+    <p class="muted">${esc(p.name||'')}</p>
+    ${(data.documents||[]).map(d => `
+      <div class="card">
+        <a href="#/documents/${d.id}">${esc(d.title || d.filename)}</a>
+        ${d.own ? ' <span class="tag spec">свой</span>' : ''}
+        <div class="muted">${esc(d.filename)} · треб. ${d.counts.requirements} · изд. ${d.counts.products}</div>
+        <div style="margin-top:6px"><a href="#/documents/${d.id}/requirements">требования документа</a></div>
+      </div>`).join('') || '<div class="muted">нет связанных документов</div>'}`;
+}
+
+async function renderDocuments(box) {
+  const list = await j('/documents');
+  box.innerHTML = `
+    <div class="crumbs"><a href="#/">Индекс</a> / Документы</div>
+    <h3>Документы</h3>
+    <p class="muted">${list.length} шт.</p>
+    ${list.map(d => `
+      <div class="card">
+        <a href="#/documents/${d.id}">${esc(d.title || d.filename)}</a>
+        <div class="muted">${esc(d.filename)} · ${esc(d.status)} · ${esc(d.kind||'')}</div>
+      </div>`).join('') || '<div class="muted">нет документов</div>'}`;
+}
+
+async function renderDocument(box, id) {
+  const d = await j('/documents/'+id);
+  const c = d.counts || {};
+  const prods = (d.products||[]).map(p =>
+    `<div class="item" onclick="location.hash='#/products/${p.id}'"><span class="code">${esc(p.code)}</span> ${esc(p.name)}</div>`).join('');
+  box.innerHTML = `
+    <div class="crumbs"><a href="#/documents">Документы</a> / ${esc(d.filename)}</div>
+    <h3>${esc(d.title || d.filename)}</h3>
+    <div class="muted">${esc(d.filename)} · ${esc(d.status)} · ${esc(d.kind||'')}</div>
+    <div class="stat" style="margin:14px 0">
+      <div><b>${c.products||0}</b><span class="muted">изделия</span></div>
+      <div><b>${c.requirements||0}</b><span class="muted">треб.</span></div>
+      <div><b>${c.attachments||0}</b><span class="muted">влож.</span></div>
+      <div><b>${c.illustrations||0}</b><span class="muted">рис.</span></div>
+    </div>
+    <p><a href="#/documents/${id}/requirements">Требования документа →</a></p>
+    <h2>Рисунки (файлы на диске)</h2>
+    <div style="display:flex;flex-wrap:wrap;gap:8px">
+      ${(d.illustrations||[]).map(i => `<a href="${i.url}" target="_blank"><img src="${i.url}" style="height:72px;border-radius:8px;border:1px solid var(--line)" /><div class="muted">${esc(i.caption||i.filename)}</div></a>`).join('') || '<div class="muted">нет</div>'}
+    </div>
+    <h2>Чанки сырого текста</h2>
+    <div class="muted" id="chunkHint">загрузка…</div>
+    <h2>Изделия в документе</h2>
+    ${prods || '<div class="muted">нет</div>'}`;
+  const ch = await j('/documents/'+id+'/chunks');
+  const hint = document.getElementById('chunkHint');
+  if (hint) hint.textContent = ch.length ? (ch.length+' шт. · '+ch.map(x=>'#'+x.seq+' ('+x.chars+')').join(', ')) : 'нет (у файла есть карточки — не режем)';
+}
+
+async function renderDocReqs(box, id) {
+  const [d, list] = await Promise.all([j('/documents/'+id), j('/requirements?document_id='+id)]);
+  box.innerHTML = `
+    <div class="crumbs"><a href="#/documents">Документы</a> / <a href="#/documents/${id}">${esc(d.filename)}</a> / Требования</div>
+    <h3>Требования документа</h3>
+    <p class="muted">${list.length} шт. · ${esc(d.title || d.filename)}</p>
+    ${list.map(r => `
+      <div class="card">
+        <a class="code" href="#/requirements/${r.id}">${esc(r.code)}</a>
+        ${r.revision?'<span class="tag">rev '+esc(r.revision)+'</span>':''}
+        ${r.extra&&r.extra.stub?'<span class="tag stub">stub</span>':''}
+        <div>${esc((r.text||'').slice(0,280))}</div>
+      </div>`).join('') || '<div class="muted">требований нет</div>'}`;
+}
+
+async function renderReqPage(box, id) {
+  const r = await j('/requirements/'+id);
+  const attrs = Object.entries(r.attributes||{}).map(([k,v]) =>
+    `<tr><th>${esc(k)}</th><td>${esc(String(v).slice(0,4000))}</td></tr>`).join('');
+  const parents = (r.parents||[]).map(p =>
+    `<div class="rel">↑ ${p.stub?'<span class="tag stub">не загружено</span>':''}<a class="code" href="#/requirements/${p.id}">${esc(p.code)}</a> ${esc((p.text||'').slice(0,160))}</div>`).join('');
+  box.innerHTML = `
+    <div class="crumbs">
+      ${r.document_id?`<a href="#/documents/${r.document_id}/requirements">Документ</a> / `:''}
+      ${esc(r.code)}
+    </div>
+    <h3 class="code">${esc(r.code)}</h3>
+    <div class="muted">${esc(r.kind||'')} · rev ${esc(r.revision||'—')}</div>
+    ${r.product_id?`<p><a href="#/products/${r.product_id}">изделие</a></p>`:''}
+    <pre>${esc(r.text||'')}</pre>
+    <h2>Вышестоящие</h2>${parents || '<div class="muted">нет</div>'}
+    <h2>Атрибуты</h2><table>${attrs}</table>`;
+}
+
+function fmtWhen(s) {
+  if (!s) return '—';
+  return String(s).replace('T', ' ').slice(0, 16);
+}
+
+async function renderHistory(box) {
+  const rows = await j('/index/history');
+  box.innerHTML = `
+    <div class="crumbs"><a href="#/">Индекс</a> / История</div>
+    <h3>История индексации</h3>
+    ${rows.map(b => `
+      <div class="card">
+        <div><b>#${b.id}</b> · ${esc(fmtWhen(b.created_at))} ${b.uploaded_by_id ? '· user '+b.uploaded_by_id : '· гость'}</div>
+        <div class="muted">${(b.files||[]).map(f => esc(f.filename||f)).join(', ') || '—'}</div>
+        <div class="muted">док. ${(b.totals&&b.totals.documents)||0} · треб. ${(b.totals&&b.totals.requirements)||0}</div>
+      </div>`).join('') || '<div class="muted">ещё не индексировали</div>'}`;
+}
+
+
+async function renderTree(box) {
+  const data = await j('/tree');
+  function rows(nodes, depth) {
+    let h = '';
+    for (const n of nodes) {
+      h += `<tr><td style="padding-left:${depth*16}px"><a class="code" href="#/products/${n.id}">${esc(n.code)}</a> ${esc(n.name)}</td><td class="muted">${(n.requirements||[]).length}</td></tr>`;
+      for (const r of n.requirements||[]) {
+        h += `<tr><td style="padding-left:${depth*16+20}px"><a class="code" href="#/requirements/${r.id}">${esc(r.code)}</a></td><td class="muted">${esc(fmtWhen(r.created_at))} · ${esc((r.text||'').slice(0,80))}</td></tr>`;
+      }
+      h += rows(n.children||[], depth+1);
+    }
+    return h;
+  }
+  box.innerHTML = `
+    <div class="crumbs"><a href="#/">Индекс</a> / Дерево</div>
+    <h3>Изделия и требования</h3>
+    <table>
+      <tr><th>узел</th><th>дата / текст</th></tr>
+      ${rows(data.roots||[], 0)}
+      ${(data.orphan_requirements||[]).map(r => `<tr><td><a class="code" href="#/requirements/${r.id}">${esc(r.code)}</a></td><td class="muted">без изделия · ${esc(fmtWhen(r.created_at))}</td></tr>`).join('')}
+    </table>`;
+}
+
+async function renderContextLab(box) {
+  const docs = await j('/documents');
+  box.innerHTML = `
+    <div class="crumbs"><a href="#/">Индекс</a> / Контекст</div>
+    <h3>Что уйдёт в модель</h3>
+    <p class="muted">граф — карточки и связи. граф+чанки — плюс нарезка сырых файлов без карточек. только чанки — простыня.</p>
+    <select id="ctxDoc"><option value="">документ…</option>${docs.map(d => `<option value="${d.id}">${esc(d.filename)}</option>`).join('')}</select>
+    <div id="ctxReqs" class="muted" style="max-height:30vh;overflow:auto;margin:8px 0"></div>
+    <div class="bar">
+      <button type="button" class="ghost" data-cm="graph">граф</button>
+      <button type="button" class="ghost" data-cm="hybrid">граф+чанки</button>
+      <button type="button" class="ghost" data-cm="chunks">только чанки</button>
+    </div>
+    <div class="muted" id="ctxMeta"></div>
+    <pre id="ctxPre"></pre>`;
+  async function loadR() {
+    const id = $('ctxDoc').value;
+    if (!id) { $('ctxReqs').innerHTML = ''; return; }
+    const rows = await j('/requirements?document_id='+id);
+    $('ctxReqs').innerHTML = rows.filter(r => !(r.extra&&r.extra.stub)).map(r =>
+      `<label class="chk"><input type="radio" name="cr" value="${r.id}" /><span class="code">${esc(r.code)}</span> ${esc((r.text||'').slice(0,80))}</label>`
+    ).join('') || '<div class="muted">нет карточек</div>';
+  }
+  $('ctxDoc').onchange = loadR;
+  box.querySelectorAll('[data-cm]').forEach(b => b.onclick = async () => {
+    const rid = (document.querySelector('input[name=cr]:checked')||{}).value;
+    if (!rid) { $('ctxMeta').textContent = 'выберите карточку'; return; }
+    const jx = await j('/retrieval/context', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({requirement_id:+rid, context_mode:b.dataset.cm, hop:1}),
+    });
+    $('ctxMeta').textContent = `режим ${jx.mode} · ${jx.packed_chars||0} / ${jx.budget_chars||0} симв. · чанков ${(jx.chunks||[]).length}`;
+    $('ctxPre').textContent = (jx.prompt||'').slice(0,8000);
+  });
+}
+
+async function renderDiagram(box, name) {
+  const b = await j('/pipelines/'+name+'/blueprint');
+  box.innerHTML = `
+    <div class="crumbs"><a href="#/pipelines">Пайплайны</a> / <a href="#/pipelines/${esc(name)}">${esc(b.title)}</a> / схема</div>
+    <h3>${esc(b.title)}</h3>
+    <div class="muted">слот ${esc(b.slot||'—')} · ${esc(b.kind||'')}</div>
+    <pre>${esc(b.mermaid||'')}</pre>
+    ${(b.steps||[]).map((s,i) => `
+      <div class="card">
+        <div class="tag run">${i+1}</div> <b>${esc(s.title)}</b>
+        <pre>${esc((s.detail||'').slice(0,2500))}</pre>
+      </div>`).join('')}`;
+}
+
+async function renderPipelines(box) {
+  const list = await j('/pipelines');
+  box.innerHTML = `
+    <div class="crumbs"><a href="#/">Индекс</a> / Пайплайны</div>
+    <h3>Пайплайны</h3>
+    <p class="muted">индексация — отдельно на главной. Здесь прогоны с ходом и токенами.</p>
+    ${list.map(p => `
+      <div class="card">
+        <a href="#/pipelines/${p.name}">${esc(p.title)}</a>
+        · <a href="#/diagram/${p.name}">схема</a>
+        <div class="muted">${esc(p.name)} · слот ${esc(p.slot||'—')}</div>
+      </div>`).join('')}`;
+}
+
+async function renderPipelinePage(box, name) {
+  const list = await j('/pipelines');
+  const meta = list.find(p => p.name === name) || {title: name, name};
+  const docs = await j('/documents');
+  const scheme = name === 'schematic-coverage';
+  const one = name === 'review-one';
+  box.innerHTML = `
+    <div class="crumbs"><a href="#/pipelines">Пайплайны</a> / ${esc(meta.title)}</div>
+    <div style="display:grid;grid-template-columns:minmax(240px,320px) 1fr;gap:18px;align-items:start;max-width:1100px">
+      <div>
+        <select id="pipeDoc">
+          <option value="">документ…</option>
+          ${docs.map(d => `<option value="${d.id}">${esc(d.title || d.filename)}</option>`).join('')}
+        </select>
+        ${scheme ? `<input id="pipeFile" type="file" accept="image/*,.pdf" style="margin:8px 0" />` : ''}
+        <div class="bar" style="margin:8px 0">
+          ${one ? '' : '<button class="ghost" type="button" id="pipeAll">все</button><button class="ghost" type="button" id="pipeNone">снять</button>'}
+          <button id="pipeGo">Пуск</button>
+          <a href="#/diagram/${esc(name)}" class="muted">схема</a>
+        </div>
+        <label class="chk"><input type="checkbox" id="pipeDebug" /> <span class="muted">отладка (промпты)</span></label>
+        <input type="search" id="pipeFilter" placeholder="фильтр…" style="margin-bottom:8px" />
+        <div id="pipeReqs" class="muted" style="max-height:55vh;overflow:auto">документ</div>
+      </div>
+      <div>
+        <div class="tok">
+          <div><b id="tokP">0</b><span class="muted">in</span></div>
+          <div><b id="tokC">0</b><span class="muted">out</span></div>
+          <div><b id="tokT">0</b><span class="muted">Σ</span></div>
+        </div>
+        <div class="progress"><i id="pipeBar"></i></div>
+        <div class="muted" id="pipeMsg">готово к запуску</div>
+        <div class="feed" id="pipeFeed"></div>
+        <div id="pipeOut"></div>
+      </div>
+    </div>`;
+
+  let allRows = [];
+  function paintReqs() {
+    const q = ($('pipeFilter').value || '').toLowerCase();
+    const rows = allRows.filter(r => !q || (r.code+' '+(r.text||'')).toLowerCase().includes(q));
+    $('pipeReqs').innerHTML = rows.map(r => `
+      <label class="chk">
+        <input type="${one?'radio':'checkbox'}" name="preq" class="preq" value="${r.id}" ${one?'':'checked'} />
+        <span><span class="code">${esc(r.code)}</span>
+          <span class="muted">${esc(fmtWhen(r.created_at))}</span>
+          <div>${esc((r.text||'').slice(0,110))}</div>
+        </span>
+      </label>`).join('') || '<div class="muted">пусто</div>';
+  }
+  async function loadReqs() {
+    const id = $('pipeDoc').value;
+    if (!id) { allRows = []; paintReqs(); return; }
+    const rows = await j('/requirements?document_id='+id);
+    allRows = rows.filter(r => !(r.extra && (r.extra.stub || r.extra.appendix)));
+    paintReqs();
+  }
+  $('pipeDoc').onchange = loadReqs;
+  $('pipeFilter').oninput = paintReqs;
+  if ($('pipeAll')) $('pipeAll').onclick = () => document.querySelectorAll('.preq').forEach(c => c.checked = true);
+  if ($('pipeNone')) $('pipeNone').onclick = () => document.querySelectorAll('.preq').forEach(c => c.checked = false);
+
+  $('pipeGo').onclick = async () => {
+    const docId = $('pipeDoc').value;
+    if (!docId) { $('pipeMsg').textContent = 'документ'; return; }
+    const ids = [...document.querySelectorAll('.preq:checked')].map(c => +c.value);
+    if (!ids.length) { $('pipeMsg').textContent = 'отметьте требования'; return; }
+    $('pipeGo').disabled = true;
+    $('pipeFeed').innerHTML = '';
+    $('pipeOut').innerHTML = '';
+    try {
+      let res;
+      if (scheme) {
+        const f = $('pipeFile') && $('pipeFile').files[0];
+        if (!f) throw new Error('файл схемы');
+        const fd = new FormData();
+        fd.append('file', f);
+        fd.append('document_id', docId);
+        fd.append('requirement_ids', JSON.stringify(ids));
+        res = await fetch('/pipelines/runs/schematic-coverage', {method:'POST', body: fd, credentials:'same-origin'});
+      } else {
+        res = await fetch('/pipelines/runs/'+name, {
+          method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin',
+          body: JSON.stringify({document_id: +docId, requirement_ids: ids, debug: !!$('pipeDebug').checked}),
+        });
+      }
+      if (!res.ok) throw new Error(await res.text());
+      const started = await res.json();
+      const stream = await fetch('/pipelines/runs/'+started.run_id+'/stream', {credentials:'same-origin'});
+      const reader = stream.body.getReader();
+      const dec = new TextDecoder();
+      let buf = '';
+      while (true) {
+        const {value, done} = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, {stream:true});
+        const lines = buf.split('\n');
+        buf = lines.pop();
+        for (const line of lines) if (line.trim()) handlePipe(JSON.parse(line));
+      }
+      if (buf.trim()) handlePipe(JSON.parse(buf));
+    } catch (e) {
+      $('pipeMsg').textContent = e.message;
+    }
+    $('pipeGo').disabled = false;
+  };
+
+  function dlLinks(r) {
+    const d = r.downloads || {};
+    const parts = [];
+    if (d.json) parts.push('<a href="'+d.json+'">json</a>');
+    if (d.md) parts.push('<a href="'+d.md+'">md</a>');
+    if (d.xlsx) parts.push('<a href="'+d.xlsx+'">xlsx</a>');
+    if (d.docx || r.download) parts.push('<a href="'+(d.docx || r.download)+'">docx</a>');
+    (r.files||[]).forEach(f => parts.push('<a href="'+f.download+'">'+esc(f.requirement)+'</a>'));
+    return parts.join(' · ');
+  }
+
+  function handlePipe(ev) {
+    const tok = ev.tokens_total || {};
+    $('tokP').textContent = tok.prompt ?? 0;
+    $('tokC').textContent = tok.completion ?? 0;
+    $('tokT').textContent = tok.total ?? 0;
+    if (ev.total && ev.index) $('pipeBar').style.width = Math.round(100*ev.index/ev.total) + '%';
+    if (ev.event === 'done') $('pipeBar').style.width = '100%';
+    const el = document.createElement('div');
+    el.className = 'ev';
+    const tag = ev.event === 'error' ? 'err' : ev.event === 'done' ? 'ok' : 'run';
+    const tu = ev.tokens && (ev.tokens.prompt || ev.tokens.completion) ? ' · '+(ev.tokens.prompt||0)+'/'+(ev.tokens.completion||0) : '';
+    el.innerHTML = '<span class="tag '+tag+'">'+esc(ev.event||'')+'</span> '+esc(ev.step||'')+tu;
+    if (ev.debug) el.innerHTML += '<pre>'+esc(JSON.stringify(ev.debug,null,2).slice(0,6000))+'</pre>';
+    $('pipeFeed').prepend(el);
+    $('pipeMsg').textContent = ev.step || ev.event || '';
+    if (ev.event === 'done' && ev.result) {
+      const r = ev.result;
+      let extra = '<div class="card">'+dlLinks(r)+'</div>';
+      if (r.output) extra += '<pre>'+esc(String(r.output).slice(0,5000))+'</pre>';
+      if (r.result && !r.output) extra += '<div>'+esc(r.result)+'</div>';
+      $('pipeOut').innerHTML = extra;
+    }
+  }
+}
+
+function roleOf(name) {
+  const n = name.toLowerCase();
+  if (n.endsWith('.xlsx') || n.endsWith('.xlsm')) return 'attachment';
+  const stem = name.replace(/\.[^.]+$/, '');
+  return (stem.split('.').length - 1) >= 2 ? 'attachment' : 'spec';
+}
+
+function renderQueue() {
+  $('queue').innerHTML = bag.map((f) => `
+    <div class="qfile">
+      <span class="name">${esc(f.name)}</span>
+      <span class="tag ${roleOf(f.name)}">${roleOf(f.name)==='spec'?'спецификация':'вложение'}</span>
+    </div>`).join('') || '<div class="muted">список пуст</div>';
+  $('indexBtn').disabled = !bag.length;
+}
+
+function addFiles(list) {
+  for (const f of list) {
+    if (![...bag].some(x => x.name===f.name && x.size===f.size)) bag.push(f);
+  }
+  renderQueue();
+  $('msg').textContent = bag.length + ' файл(ов) в пакете';
+}
+
+function log(html) {
+  const el = $('feed');
+  const d = document.createElement('div');
+  d.className = 'ev';
+  d.innerHTML = html;
+  el.prepend(d);
+}
+
+function setBar(i, n) {
+  $('bar').style.width = (n ? Math.round(100*i/n) : 0) + '%';
+}
+
+function mergeReqs(list, isNew) {
+  const byId = new Map(reqs.map(r => [r.id, r]));
+  for (const r of list) {
+    if (!byId.has(r.id)) {
+      if (isNew) seen.add(r.id);
+      reqs.unshift(r);
+      byId.set(r.id, r);
+    }
+  }
+  renderReqs();
+}
+
+function renderStats(t) {
+  $('stats').innerHTML = `
+    <div><b>${t.documents??0}</b><span class="muted">док.</span></div>
+    <div><b>${t.requirements??0}</b><span class="muted">треб.</span></div>
+    <div><b>${t.products??0}</b><span class="muted">изделия</span></div>
+    <div><b>${t.attachments??0}</b><span class="muted">влож.</span></div>
+    <div><b>${t.illustrations??0}</b><span class="muted">рис.</span></div>
+    <div><b>${t.chunks??0}</b><span class="muted">чанки</span></div>`;
+}
+
+function renderReqs() {
+  const q = $('q').value.toLowerCase();
+  const rows = reqs.filter(r => !q || (r.code+' '+(r.text||'')).toLowerCase().includes(q));
+  $('reqs').innerHTML = rows.map(r => {
+    const stub = r.extra && r.extra.stub || r.stub;
+    return `<div class="item ${seen.has(r.id)?'new':''}" onclick="openReq(${r.id})">
+      <div class="code">${esc(r.code)}
+        ${stub?'<span class="tag stub">stub</span>':''}
+        ${r.revision?'<span class="tag">rev '+esc(r.revision)+'</span>':''}
+        ${r.kind?'<span class="tag">'+esc(r.kind)+'</span>':''}
+      </div>
+      <div>${esc((r.text||'').slice(0,160))}</div>
+    </div>`;
+  }).join('') || '<div class="muted">ещё нет требований — проиндексируйте пакет</div>';
+}
+
+async function openReq(id) {
+  const r = await j('/requirements/'+id);
+  const attrs = Object.entries(r.attributes||{}).map(([k,v]) =>
+    `<tr><th>${esc(k)}</th><td>${esc(String(v).slice(0,4000))}</td></tr>`).join('');
+  const parents = (r.parents||[]).map(p =>
+    `<div class="rel">↑ ${p.stub?'<span class="tag stub">не загружено</span>':''}<span class="code">${esc(p.code)}</span> ${esc((p.text||'').slice(0,160))}</div>`).join('');
+  const atts = (r.attachments||[]).map(a =>
+    `<div class="rel">📎 ${esc(a.filename)} <pre>${esc((a.text_content||'').slice(0,2000))}</pre></div>`).join('');
+  $('card').innerHTML = `
+    <div class="code"><a href="#/requirements/${r.id}" style="color:inherit">${esc(r.code)}</a></div>
+    <div class="muted">${esc(r.kind||'')} · rev ${esc(r.revision||'—')}</div>
+    ${r.document_id?`<div class="rel"><a href="#/documents/${r.document_id}">документ</a></div>`:''}
+    <pre>${esc(r.text||'')}</pre>
+    <h2>Вышестоящие</h2>${parents || '<div class="muted">нет</div>'}
+    <h2>Атрибуты и файлы</h2><table>${attrs}</table>${atts}`;
+}
+
+async function loadDocs() {
+  docs = await j('/documents');
+  $('docs').innerHTML = docs.map(d => `
+    <div class="item ${currentDoc===d.id?'on':''}" onclick="selectDoc(${d.id})">
+      <div><a href="#/documents/${d.id}" onclick="event.stopPropagation()">${esc(d.title || d.filename)}</a></div>
+      <div class="muted">${esc(d.filename)} · ${esc(d.status)}</div>
+    </div>`).join('') || '<div class="muted">нет документов</div>';
+}
+
+async function selectDoc(id) {
+  currentDoc = id;
+  const qs = id ? ('?document_id='+id) : '';
+  const r = await j('/requirements'+qs);
+  reqs = r;
+  const ov = await j('/overview');
+  renderStats(ov.totals);
+  renderReqs();
+  loadDocs();
+}
+
+$('drop').addEventListener('click', e => { if (e.target.id!=='files') $('files').click(); });
+$('files').addEventListener('change', e => addFiles(e.target.files));
+['dragover','dragenter'].forEach(ev => $('drop').addEventListener(ev, e => { e.preventDefault(); $('drop').classList.add('over'); }));
+$('drop').addEventListener('dragleave', () => $('drop').classList.remove('over'));
+$('drop').addEventListener('drop', e => {
+  e.preventDefault(); $('drop').classList.remove('over');
+  addFiles(e.dataTransfer.files);
+});
+$('clearBtn').onclick = () => { bag = []; renderQueue(); $('msg').textContent = 'список очищен'; };
+$('q').addEventListener('input', renderReqs);
+
+async function askAuth(path, title) {
+  const username = prompt(title + ': логин');
+  if (!username) return;
+  const password = prompt('пароль');
+  if (password == null) return;
+  await j(path, { method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin',
+    body: JSON.stringify({username, password}) });
+  await refreshMe();
+}
+$('themeBtn').onclick = () => {
+  const cur = document.documentElement.getAttribute('data-theme') || 'night';
+  applyTheme(cur === 'day' ? 'night' : 'day');
+};
+$('loginBtn').onclick = () => askAuth('/auth/login', 'Вход');
+$('regBtn').onclick = () => askAuth('/auth/register', 'Регистрация');
+$('logoutBtn').onclick = async () => { await j('/auth/logout', {method:'POST'}); await refreshMe(); };
+
+$('wipeBtn').onclick = async () => {
+  if (!confirm('Удалить все изделия, требования и документы из БД?')) return;
+  try {
+    await j('/db/wipe', { method: 'POST' });
+    reqs = []; docs = []; currentDoc = null; seen.clear();
+    renderReqs(); renderStats({}); loadDocs();
+    $('card').innerHTML = '<span class="muted">база пуста</span>';
+    $('msg').textContent = 'БД очищена';
+    log('<span class="tag ok">wipe</span> база очищена');
+    if (location.hash && location.hash !== '#/') location.hash = '#/';
+    else route();
+  } catch (e) {
+    $('msg').textContent = e.message;
+  }
+};
+
+$('indexBtn').onclick = async () => {
+  if (!bag.length) return;
+  $('indexBtn').disabled = true;
+  $('msg').textContent = 'индексация…';
+  $('feed').innerHTML = '';
+  const fd = new FormData();
+  for (const f of bag) fd.append('files', f);
+  try {
+    const res = await fetch('/index', { method: 'POST', body: fd });
+    if (!res.ok) throw new Error(await res.text());
+    const reader = res.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    while (true) {
+      const {value, done} = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, {stream: true});
+      const lines = buf.split('\n');
+      buf = lines.pop();
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        handle(JSON.parse(line));
+      }
+    }
+    if (buf.trim()) handle(JSON.parse(buf));
+    bag = [];
+    renderQueue();
+    await loadDocs();
+  } catch (e) {
+    $('msg').textContent = e.message;
+    log('<span class="tag err">ошибка</span> '+esc(e.message));
+  }
+  $('indexBtn').disabled = false;
+};
+
+function handle(ev) {
+  if (ev.event === 'queued') {
+    log('<span class="tag">пакет</span> '+ev.files.map(f => f.filename).join(', '));
+    if (ev.totals) renderStats(ev.totals);
+  }
+  if (ev.event === 'file_start') {
+    setBar(ev.index-1, ev.total);
+    $('msg').textContent = ev.filename + ' — ' + ev.step;
+    log('<span class="tag run">'+ev.index+'/'+ev.total+'</span> <b>'+esc(ev.filename)+'</b> · '+esc(ev.step));
+  }
+  if (ev.event === 'file_done') {
+    setBar(ev.index, ev.total);
+    const c = ev.entities.counts || {};
+    log('<span class="tag ok">готово</span> <b>'+esc(ev.filename)+'</b> → треб. '+c.requirements+', изд. '+c.products+', влож. '+c.attachments+(c.stubs? ', stub '+c.stubs:''));
+    mergeReqs(ev.entities.requirements || [], true);
+    currentDoc = ev.document_id;
+  }
+  if (ev.event === 'file_error') {
+    log('<span class="tag err">сбой</span> <b>'+esc(ev.filename)+'</b> — '+esc(ev.error));
+  }
+  if (ev.event === 'linking') {
+    $('msg').textContent = ev.step;
+    log('<span class="tag run">связи</span> '+esc(ev.step));
+  }
+  if (ev.event === 'done') {
+    setBar(1,1);
+    $('msg').textContent = 'готово: '+ (ev.documents||[]).length + ' док.';
+    if (ev.totals) renderStats(ev.totals);
+    log('<span class="tag ok">пакет закрыт</span> в базе треб. '+(ev.totals&&ev.totals.requirements));
+    if (ev.documents && ev.documents[0]) currentDoc = ev.documents[0].id;
+  }
+}
+
+window.addEventListener('hashchange', route);
+refreshMe();
+j('/overview').then(ov => {
+  renderStats(ov.totals);
+  reqs = ov.recent_requirements || [];
+  renderReqs();
+}).catch(()=>{});
+loadDocs();
+renderQueue();
+route();
+</script>
+</body>
+</html>
