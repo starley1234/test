@@ -585,12 +585,42 @@ async def start_schematic_run(
     return {"run_id": job.id, "name": "schematic-coverage"}
 
 
+@router.post("/pipelines/runs/{run_id}/pause")
+def pause_run(run_id: str):
+    from specgraph.pipelines.jobs import set_job_control
+
+    try:
+        return set_job_control(run_id, paused=True).snapshot()
+    except KeyError:
+        raise HTTPException(404) from None
+
+
+@router.post("/pipelines/runs/{run_id}/resume")
+def resume_run(run_id: str):
+    from specgraph.pipelines.jobs import set_job_control
+
+    try:
+        return set_job_control(run_id, paused=False).snapshot()
+    except KeyError:
+        raise HTTPException(404) from None
+
+
+@router.post("/pipelines/runs/{run_id}/stop")
+def stop_run(run_id: str):
+    from specgraph.pipelines.jobs import set_job_control
+
+    try:
+        return set_job_control(run_id, halt=True).snapshot()
+    except KeyError:
+        raise HTTPException(404) from None
+
+
 @router.post("/pipelines/runs/{name}")
 def start_named_run(name: str, body: PipelineRequest, user: User | None = Depends(optional_user)):
     from specgraph.pipelines.graphs import _catalog
     from specgraph.pipelines.jobs import start_job
 
-    if name.startswith("_") or name not in _catalog():
+    if name != "review-correctness":
         raise HTTPException(404, f"unknown pipeline: {name}")
     _need_pipe(name, user)
     job = start_job(name, body.model_dump(exclude_none=True), user_id=user.id if user else None)

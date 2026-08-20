@@ -16,6 +16,10 @@ from specgraph.config import settings
 log = logging.getLogger("specgraph.jobs")
 
 
+class JobStopped(Exception):
+    pass
+
+
 @dataclass
 class Job:
     id: str
@@ -27,7 +31,18 @@ class Job:
     error: str | None = None
     user_id: int | None = None
     mode: str | None = None
+    paused: bool = False
+    halt: bool = False
     lock: threading.Lock = field(default_factory=threading.Lock)
+
+    def wait_gate(self) -> None:
+        while True:
+            with self.lock:
+                if self.halt:
+                    raise JobStopped("остановлено")
+                if not self.paused:
+                    return
+            time.sleep(0.2)
 
     def emit(self, ev: dict[str, Any]) -> None:
         with self.lock:
@@ -46,6 +61,8 @@ class Job:
                 "id": self.id,
                 "name": self.name,
                 "status": self.status,
+                "paused": self.paused,
+                "halt": self.halt,
                 "mode": self.mode,
                 "tokens": dict(self.tokens),
                 "events": list(self.events),
@@ -154,8 +171,11 @@ def start_job(
             result = _dispatch(name, db, kwargs, job, scheme_path, scheme_name)
             job.result = result
             job.mode = result.get("mode")
-            job.status = "done"
-            job.emit({"event": "done", "step": "готово", "result": _slim(result), "mode": job.mode})
+            job.status = "stopped" if result.get("stopped") else "done"
+            job.emit({"event": job.status if job.status == "stopped" else "done", "step": "готово" if job.status == "done" else "остановлено", "result": _slim(result), "mode": job.mode})
+        except JobStopped:
+            job.status = "stopped"
+            job.emit({"event": "stopped", "step": "остановлено, матрица по уже оценённым", "result": _slim(job.result or {})})
         except Exception as exc:  # noqa: BLE001
             log.exception("job %s failed", job.id)
             job.status = "error"
@@ -183,8 +203,36 @@ def _slim(result: dict[str, Any]) -> dict[str, Any]:
     return keep
 
 
+def set_job_control(job_id: str, *, paused: bool | None = None, halt: bool = False) -> Job:
+    job = _JOBS.get(job_id)
+    if not job:
+        raise KeyError(job_id)
+    with job.lock:
+        if halt:
+            job.halt = True
+            job.paused = False
+            if job.status in {"queued", "running", "paused"}:
+                job.status = "stopping"
+        elif paused is True:
+            job.paused = True
+            if job.status == "running":
+                job.status = "paused"
+            job.emit({"event": "pause", "step": "пауза"})
+        elif paused is False:
+            job.paused = False
+            if job.status == "paused":
+                job.status = "running"
+            job.emit({"event": "resume", "step": "продолжили"})
+    _persist(job)
+    return job
+
+
 def _progress(job: Job) -> Callable[[dict[str, Any]], None]:
-    return job.emit
+    def on(ev: dict[str, Any]) -> None:
+        job.wait_gate()
+        job.emit(ev)
+
+    return on
 
 
 def _dispatch(name: str, db, kwargs: dict[str, Any], job: Job, scheme_path: Path | None, scheme_name: str | None) -> dict[str, Any]:

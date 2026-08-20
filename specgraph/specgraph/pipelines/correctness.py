@@ -124,45 +124,73 @@ def evaluate(
     rows = []
     n = len(reqs)
     if on_progress:
-        on_progress({"event": "plan", "step": f"к оценке {n} требований", "total": n})
+        on_progress({"event": "plan", "step": f"карточек к проверке: {n}", "total": n, "log": f"plan cards={n} doc={document_id}"})
+    stopped = False
     for i, r in enumerate(reqs, 1):
-        if on_progress:
-            on_progress({"event": "item", "step": f"оценка {r.code}", "index": i, "total": n, "code": r.code})
-        ctx = expand_requirement(db, r.id)
-        if on_progress:
-            on_progress(
-                {
-                    "event": "debug",
-                    "step": f"промпт {r.code}",
-                    "debug": {
+        try:
+            if on_progress:
+                on_progress(
+                    {
+                        "event": "stage",
+                        "stage": "read",
+                        "step": f"{i}/{n} читаем {r.code}",
+                        "index": i,
+                        "total": n,
                         "code": r.code,
-                        "text": (r.text or "")[:2000],
-                        "attributes": ctx.get("attributes"),
-                        "created_at": str(getattr(r, "created_at", "") or ""),
-                    },
-                }
-            )
-        row = _llm_row(r, checklist, ctx)
-        row["id"] = r.id
-        rows.append(row)
-        if on_progress:
-            on_progress(
-                {
-                    "event": "item_done",
-                    "step": f"{r.code}: {(row.get('note') or '')[:80]}",
-                    "index": i,
-                    "total": n,
-                    "code": r.code,
-                    "tokens": row.get("tokens") or {},
-                    "mode": row.get("mode"),
-                }
-            )
+                    }
+                )
+            ctx = expand_requirement(db, r.id)
+            n_par = len(ctx.get("parents") or [])
+            n_stub = sum(1 for p in (ctx.get("parents") or []) if p.get("stub"))
+            n_att = len(ctx.get("attachments") or [])
+            n_ill = len(ctx.get("illustrations") or [])
+            if on_progress:
+                on_progress(
+                    {
+                        "event": "stage",
+                        "stage": "context",
+                        "step": f"контекст {r.code}: родители {n_par} (stub {n_stub}), файлы {n_att}, рис. {n_ill}",
+                        "index": i,
+                        "total": n,
+                        "code": r.code,
+                        "log": f"ctx {r.code} parents={n_par} stub={n_stub} files={n_att} ill={n_ill} attrs={len(ctx.get('attributes') or {})}",
+                    }
+                )
+                on_progress(
+                    {"event": "stage", "stage": "eval", "step": f"оценка {r.code}", "index": i, "total": n, "code": r.code}
+                )
+            row = _llm_row(r, checklist, ctx)
+            row["id"] = r.id
+            rows.append(row)
+            if on_progress:
+                on_progress(
+                    {
+                        "event": "item_done",
+                        "stage": "row",
+                        "step": f"{r.code} {'ок' if row.get('pass') else 'замечание'}: {(row.get('note') or '')[:80]}",
+                        "index": i,
+                        "total": n,
+                        "code": r.code,
+                        "pass": row.get("pass"),
+                        "note": row.get("note"),
+                        "marks": row.get("marks"),
+                        "tokens": row.get("tokens") or {},
+                        "mode": row.get("mode"),
+                        "log": f"row {i}/{n} {r.code} pass={row.get('pass')} mode={row.get('mode')} note={(row.get('note') or '')[:60]}",
+                    }
+                )
+        except Exception as exc:  # noqa: BLE001
+            if exc.__class__.__name__ == "JobStopped" or "остановлено" in str(exc).lower():
+                stopped = True
+                break
+            raise
     passed = all(x["pass"] for x in rows) if rows else False
     return {
         "checklist": checklist["title"],
         "result": checklist["pass_text"] if passed else checklist["fail_text"],
         "count": len(rows),
         "rows": rows,
+        "stopped": stopped,
     }
 
 
