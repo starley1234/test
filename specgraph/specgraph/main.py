@@ -11,6 +11,7 @@ from fastapi.staticfiles import StaticFiles
 
 from specgraph.api.auth_routes import router as auth_router
 from specgraph.api.routes import STATIC, router
+from specgraph.api.rag_routes import router as rag_router
 from specgraph.db import init_db
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
@@ -29,6 +30,7 @@ app = FastAPI(
 )
 app.include_router(auth_router)
 app.include_router(router)
+app.include_router(rag_router)
 if STATIC.exists():
     app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
 

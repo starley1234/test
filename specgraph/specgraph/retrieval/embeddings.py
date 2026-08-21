@@ -14,7 +14,39 @@ def _local_model():
     from sentence_transformers import SentenceTransformer
 
     _, _, model = settings.embed()
-    return SentenceTransformer(model)
+    try:
+        return SentenceTransformer(model)
+    except Exception as e:
+        # offline fallback — will use hash embed
+        print(f"[embed] local model load failed ({e}), using hash fallback")
+        return None
+
+
+def _hash_embed(texts: list[str], dim: int) -> list[list[float]]:
+    """Детерминированный offline эмбеддинг без скачивания модели.
+    Токенизация по словам, хэш в бакеты, L2 нормализация."""
+    import hashlib
+    import re
+
+    out = []
+    for txt in texts:
+        vec = [0.0] * dim
+        tokens = re.findall(r"[a-zа-яё0-9]{2,}", (txt or "").lower())
+        for tok in tokens:
+            # хэш токена -> индекс
+            h = int(hashlib.md5(tok.encode()).hexdigest()[:8], 16)
+            idx = h % dim
+            # второй хэш для знака / веса
+            h2 = int(hashlib.md5((tok + "_2").encode()).hexdigest()[:8], 16)
+            sign = 1 if (h2 % 2 == 0) else -1
+            vec[idx] += sign * (1.0 + len(tok) * 0.05)
+            # биграммы тоже
+        # L2 norm
+        import math
+        norm = math.sqrt(sum(x * x for x in vec)) or 1.0
+        vec = [x / norm for x in vec]
+        out.append(vec)
+    return out
 
 
 def _encode_remote(texts: list[str], base_url: str, api_key: str, model: str) -> list[list[float]]:
@@ -46,11 +78,23 @@ def encode(texts: list[str]) -> list[list[float]]:
     if not texts:
         return []
     base, key, model = settings.embed()
+    dim = int(settings.embedding_dim or 384)
     if base:
-        raw = _encode_remote(texts, base, key, model)
-    else:
-        vecs = _local_model().encode(texts, normalize_embeddings=True)
-        raw = [v.tolist() for v in np.asarray(vecs)]
+        try:
+            raw = _encode_remote(texts, base, key, model)
+            return [_fit_dim(v) for v in raw]
+        except Exception as e:
+            print(f"[embed] remote failed ({e}), fallback to local/hash")
+    m = _local_model()
+    if m is not None:
+        try:
+            vecs = m.encode(texts, normalize_embeddings=True)
+            raw = [v.tolist() for v in np.asarray(vecs)]
+            return [_fit_dim(v) for v in raw]
+        except Exception as e:
+            print(f"[embed] local encode failed ({e}), fallback to hash")
+    # hash fallback
+    raw = _hash_embed(texts, dim)
     return [_fit_dim(v) for v in raw]
 
 

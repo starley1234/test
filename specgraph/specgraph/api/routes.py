@@ -620,7 +620,8 @@ def start_named_run(name: str, body: PipelineRequest, user: User | None = Depend
     from specgraph.pipelines.graphs import _catalog
     from specgraph.pipelines.jobs import start_job
 
-    if name != "review-correctness":
+    cat = _catalog()
+    if name not in cat:
         raise HTTPException(404, f"unknown pipeline: {name}")
     _need_pipe(name, user)
     job = start_job(name, body.model_dump(exclude_none=True), user_id=user.id if user else None)
