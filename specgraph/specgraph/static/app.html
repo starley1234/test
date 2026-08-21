@@ -3,215 +3,480 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>SpecGraph</title>
+  <title>SpecGraph — Workspace RAG v2</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>tailwind.config = { theme: { extend: { colors: { ink: { 900: "#0b1f33", 800: "#123049" }, steel: { 50: "#f4f7fa", 100: "#e6edf3", 600: "#3d5a73" }, accent: { DEFAULT: "#1b6fbf" } } } } };</script>
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style> *{font-family:"IBM Plex Sans",system-ui,sans-serif} .mono{font-family:"JetBrains Mono",monospace} </style>
 </head>
-<body class="bg-steel-50 text-ink-900 font-sans min-h-screen">
+<body class="bg-steel-50 text-ink-900 min-h-screen flex flex-col">
   <header class="bg-ink-900 text-white">
-    <div class="max-w-5xl mx-auto px-5 py-4 flex justify-between items-center">
-      <div>
-        <div class="text-lg font-semibold">SpecGraph</div>
-        <div class="text-sm text-white/60">база требований → проверка по одной карточке → матрица</div>
+    <div class="max-w-[1700px] mx-auto px-4 py-3 flex flex-wrap justify-between items-center gap-3">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center font-semibold">S</div>
+        <div>
+          <div class="text-[15px] font-semibold leading-none">SpecGraph — Workspace RAG v2 + Пайплайны</div>
+          <div class="text-[11px] text-white/60 mt-1">документы → гибридный RAG (meta+exact+lexical+vector) → бюджет контекста → пайплайны</div>
+        </div>
       </div>
-      <a href="/dev" class="text-sm text-white/70 underline">для разработчика</a>
+      <div class="flex items-center gap-3 flex-wrap">
+        <div class="flex items-center gap-2 bg-white/10 rounded-full px-3 py-1">
+          <span class="text-[11px] text-white/70">Бюджет:</span>
+          <input id="budget" type="range" min="1000" max="20000" step="500" value="8000" class="w-24 accent-white">
+          <span id="budgetLabel" class="text-xs mono text-white">8000 симв ~ 2285 ток</span>
+        </div>
+        <span id="wsTotals" class="text-xs text-white/50 mono"></span>
+        <a href="/dev" class="text-xs text-white/60 underline">dev →</a>
+      </div>
     </div>
   </header>
 
-  <main class="max-w-5xl mx-auto px-5 py-8 space-y-6">
-    <section class="bg-white rounded-xl border border-steel-100 p-6">
-      <h1 class="text-xl font-semibold mb-1">1. Документ с требованиями</h1>
-      <p class="text-sm text-steel-600 mb-4">Word/Excel. Карточки станут сущностями. Проверяем только выбранный документ.</p>
-      <label class="flex flex-col items-center border-2 border-dashed rounded-xl py-8 cursor-pointer hover:border-accent">
-        <span class="font-medium">Файлы сюда</span>
-        <span class="text-sm text-steel-600" id="dropHint">ничего не выбрано</span>
-        <input id="files" type="file" multiple class="sr-only" />
-      </label>
-      <ul id="queue" class="mt-2 text-sm"></ul>
-      <div class="mt-3 flex gap-3">
-        <button id="go" disabled class="bg-accent disabled:opacity-40 text-white font-semibold rounded-lg px-5 py-2">Собрать базу</button>
-        <button id="clear" type="button" class="text-sm underline text-steel-600">очистить</button>
+  <div class="flex-1 max-w-[1700px] w-full mx-auto grid grid-cols-1 lg:grid-cols-[340px_1fr_400px] gap-0 min-h-0">
+    <!-- LEFT: Workspace -->
+    <aside class="bg-white border-r border-steel-100 flex flex-col min-h-[calc(100vh-56px)]">
+      <div class="p-4 border-b border-steel-100">
+        <h2 class="text-[13px] font-semibold uppercase tracking-wide text-steel-600 mb-3">Рабочее пространство</h2>
+        <label id="drop" class="flex flex-col items-center border-2 border-dashed border-steel-100 rounded-xl py-5 px-3 cursor-pointer hover:border-accent hover:bg-blue-50/50 transition text-center group">
+          <div class="w-9 h-9 rounded-full bg-steel-50 group-hover:bg-white border flex items-center justify-center mb-2">＋</div>
+          <span class="text-sm font-medium">Перетащи .docx / .pdf / .xlsx</span>
+          <span class="text-xs text-steel-600 mt-1" id="dropHint">или клик для выбора</span>
+          <input id="files" type="file" multiple class="sr-only" />
+        </label>
+        <div id="queue" class="mt-2 text-xs"></div>
+        <div class="mt-3 flex gap-2">
+          <button id="go" disabled class="flex-1 bg-ink-900 text-white rounded-lg px-3 py-2 text-sm font-medium disabled:opacity-30">Индексировать → БД</button>
+          <button id="clear" class="text-xs underline text-steel-600 px-2">очистить</button>
+        </div>
+        <div class="mt-3 h-1.5 bg-steel-100 rounded-full overflow-hidden"><div id="bar" class="h-full bg-accent w-0 transition-all"></div></div>
+        <p id="msg" class="mt-2 text-xs text-steel-600">ожидание файлов</p>
+        <div id="stats" class="mt-4 grid grid-cols-3 gap-2"></div>
+        <div class="mt-3 flex gap-1">
+          <button data-preset="2000" class="presetBtn text-[11px] px-2 py-1 rounded-full border bg-white">2k эконом</button>
+          <button data-preset="8000" class="presetBtn text-[11px] px-2 py-1 rounded-full border bg-ink-900 text-white">8k оптим</button>
+          <button data-preset="16000" class="presetBtn text-[11px] px-2 py-1 rounded-full border bg-white">16k много</button>
+        </div>
       </div>
-      <div class="mt-3 h-1.5 bg-steel-100 rounded-full overflow-hidden"><div id="bar" class="h-full bg-accent w-0"></div></div>
-      <p id="msg" class="mt-2 text-sm text-steel-600"></p>
-    </section>
+      <div class="flex-1 overflow-auto p-3">
+        <div class="flex justify-between items-center mb-2">
+          <h3 class="text-xs font-semibold uppercase tracking-wide text-steel-600">Документы</h3>
+          <button id="reloadWs" class="text-[11px] underline text-steel-600">обновить</button>
+        </div>
+        <div id="docs" class="space-y-2"></div>
+        <div id="docDetail" class="mt-4 border-t border-steel-100 pt-3 hidden">
+          <h4 class="text-xs font-semibold">Превью документа</h4>
+          <div id="docDetailBody" class="text-xs mt-2"></div>
+        </div>
+      </div>
+      <div class="p-3 border-t border-steel-100 bg-steel-50 text-[11px] leading-snug text-steel-600">
+        <b>RAG v2:</b> meta (COUNT, list) — 0 токенов, без LLM. exact code — 1 требование. semantic — top-K под бюджет 8000 симв (~2.3k ток). Бюджет 70% требования, 20% чанки, 10% meta.
+        <br/><br/>
+        <b>Эффективность:</b> не жжём контекст на простые вопросы, упаковываем только нужное, усекаем по предложениям.
+      </div>
+    </aside>
 
-    <section class="bg-white rounded-xl border border-steel-100 p-6">
-      <h2 class="text-lg font-semibold mb-2">2. Проверка корректности</h2>
-      <p class="text-sm text-steel-600 mb-3">По одной карточке: читаем → контекст из графа → оценка по критериям А.3 → строка матрицы.</p>
-      <select id="docSel" class="border rounded-lg px-3 py-2 w-full max-w-md mb-3"></select>
-      <div class="flex flex-wrap gap-2 mb-3">
-        <button id="run" class="bg-ink-800 text-white rounded-lg px-4 py-2 font-medium">Проверить документ</button>
-        <button id="pause" type="button" disabled class="border rounded-lg px-4 py-2">Пауза</button>
-        <button id="resume" type="button" disabled class="border rounded-lg px-4 py-2">Продолжить</button>
-        <button id="stop" type="button" disabled class="border rounded-lg px-4 py-2 text-red-700">Стоп</button>
+    <!-- CENTER: Chat + Pipelines -->
+    <main class="flex flex-col bg-steel-50 min-h-[calc(100vh-56px)]">
+      <div class="bg-white border-b border-steel-100 flex text-xs">
+        <button data-center="chat" class="centerTab flex-1 py-2.5 font-medium border-b-2 border-ink-900">Чат (RAG)</button>
+        <button data-center="pipelines" class="centerTab flex-1 py-2.5 text-steel-600">Пайплайны (RAG v2)</button>
+        <button data-center="matrix" class="centerTab flex-1 py-2.5 text-steel-600">Проверка</button>
       </div>
-      <div id="stage" class="text-sm font-medium mb-2">ожидание</div>
-      <div class="h-2 bg-steel-100 rounded-full overflow-hidden mb-3"><div id="pbar" class="h-full bg-accent w-0"></div></div>
-      <ol id="steps" class="flex flex-wrap gap-2 text-xs mb-4">
-        <li id="st-read" class="px-2 py-1 rounded bg-steel-100">читаем карточку</li>
-        <li id="st-context" class="px-2 py-1 rounded bg-steel-100">контекст БД</li>
-        <li id="st-eval" class="px-2 py-1 rounded bg-steel-100">оценка</li>
-        <li id="st-row" class="px-2 py-1 rounded bg-steel-100">строка матрицы</li>
-      </ol>
-      <div id="dl" class="flex gap-3 mb-3"></div>
-      <div class="overflow-auto max-h-64 border rounded-lg">
-        <table class="w-full text-sm">
-          <thead><tr class="text-left text-steel-600"><th class="p-2">код</th><th class="p-2">итог</th><th class="p-2">заметка</th></tr></thead>
-          <tbody id="mtx"></tbody>
-        </table>
-      </div>
-    </section>
 
-    <section class="bg-white rounded-xl border border-steel-100 p-6">
-      <div class="flex justify-between items-center mb-2">
-        <h2 class="text-lg font-semibold">Лог (скопируйте мне)</h2>
-        <button type="button" id="copyLog" class="text-sm underline">копировать</button>
+      <!-- Chat Tab -->
+      <div id="center-chat" class="flex flex-col flex-1 min-h-0">
+        <div class="bg-white border-b border-steel-100 p-2.5 flex flex-wrap items-center gap-2 justify-between">
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-semibold uppercase text-steel-600">Чат конструктора</span>
+            <div class="flex bg-steel-100 rounded-full p-1">
+              <button data-mode="hybrid" class="modeBtn px-3 py-1 rounded-full text-xs font-medium bg-ink-900 text-white">Гибрид (наш)</button>
+              <button data-mode="chunks_only" class="modeBtn px-3 py-1 rounded-full text-xs font-medium text-steel-600">Только чанки</button>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 text-[11px] text-steel-600">
+            <span>top_k</span><input id="topk" type="range" min="3" max="30" value="10" class="w-16"><span id="topkLabel" class="mono">10</span>
+          </div>
+        </div>
+
+        <div id="chat" class="flex-1 overflow-auto p-4 space-y-4">
+          <div class="bg-white rounded-xl border border-steel-100 p-4">
+            <div class="text-sm font-medium mb-2">Привет! Это RAG v2 с бюджетом.</div>
+            <div class="text-xs text-steel-600 space-y-1">
+              <div>Примеры (попробуй переключать бюджет сверху):</div>
+              <div id="examples" class="flex flex-wrap gap-2 mt-2"></div>
+            </div>
+            <div class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px]">
+              <div class="bg-steel-50 rounded-lg p-2 border">
+                <div class="font-medium">Наша эффективность</div>
+                <ul class="list-disc ml-4 mt-1 space-y-0.5">
+                  <li><b>list/docs</b> — 0 токенов, ответ из БД, без LLM</li>
+                  <li><b>count</b> — 0 токенов, COUNT(*)</li>
+                  <li><b>find by code</b> — ~150 ток, 1 требование</li>
+                  <li><b>semantic</b> — ~budget (2-8k) ток, топ по score, усечение по предложениям</li>
+                </ul>
+              </div>
+              <div class="bg-blue-50 rounded-lg p-2 border border-blue-100">
+                <div class="font-medium">Бюджет (слайдер в шапке)</div>
+                <div class="mt-1">8000 симв ≈ 2285 ток (ru 3.5 симв/ток).<br/>70% требования, 20% чанки, 10% meta.<br/>При 100 требованиях — берём только топ по релевантности, остальное не жжём.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="bg-white border-t border-steel-100 p-3">
+          <div class="flex gap-2">
+            <input id="q" class="flex-1 border border-steel-100 rounded-xl px-3 py-2.5 text-sm outline-none focus:border-accent" placeholder="Спроси: Какие документы загружены? Сколько требований...? Найди REQ-...? Где про надёжность?" />
+            <button id="send" class="bg-accent text-white rounded-xl px-5 py-2.5 text-sm font-semibold">Отправить</button>
+          </div>
+          <div class="text-[11px] text-steel-600 mt-1">Бюджет влияет на величину RAG: сколько требований и чанков упакуем. Meta-вопросы не тратят бюджет.</div>
+        </div>
       </div>
-      <textarea id="log" readonly class="w-full h-40 text-xs font-mono bg-steel-50 rounded-lg p-3 border" placeholder="сюда пишутся короткие строки прогона"></textarea>
-    </section>
-  </main>
+
+      <!-- Pipelines Tab -->
+      <div id="center-pipelines" class="hidden flex-col flex-1 min-h-0 overflow-auto p-4 space-y-4">
+        <div class="bg-white rounded-xl border border-steel-100 p-4">
+          <h3 class="text-sm font-semibold mb-1">Пайплайны (восстановлены + RAG v2)</h3>
+          <p class="text-xs text-steel-600">Теперь все пайплайны используют гибридный RAG с бюджетом. Не тянут весь документ, а только релевантные требования.</p>
+          <div id="pipelineList" class="mt-3 grid grid-cols-1 md:grid-cols-2 gap-2"></div>
+        </div>
+
+        <div class="bg-white rounded-xl border border-steel-100 p-4 space-y-3">
+          <div class="flex flex-wrap gap-3 items-end">
+            <div>
+              <label class="text-[11px] uppercase text-steel-600">Документ</label><br/>
+              <select id="pipeDoc" class="border rounded-lg px-2 py-1.5 text-sm w-56"></select>
+            </div>
+            <div>
+              <label class="text-[11px] uppercase text-steel-600">Запрос (опц.)</label><br/>
+              <input id="pipeQuery" class="border rounded-lg px-2 py-1.5 text-sm w-64" placeholder="например: про надёжность" />
+            </div>
+            <div>
+              <label class="text-[11px] uppercase text-steel-600">top_k</label><br/>
+              <input id="pipeTopK" type="number" value="15" min="1" max="100" class="border rounded-lg px-2 py-1.5 text-sm w-20">
+            </div>
+            <button id="pipeLoadReqs" class="border rounded-lg px-3 py-1.5 text-sm">Загрузить требования</button>
+          </div>
+          <div id="pipeReqs" class="max-h-48 overflow-auto border rounded-lg p-2 text-xs bg-steel-50">выбери документ</div>
+          <div class="flex gap-2">
+            <button id="pipeAll" class="text-xs border rounded-full px-2 py-1 bg-white">все</button>
+            <button id="pipeNone" class="text-xs border rounded-full px-2 py-1 bg-white">снять</button>
+            <span class="text-xs text-steel-600 ml-2">Выбрано: <span id="pipeSelCount">0</span></span>
+          </div>
+
+          <div class="flex flex-wrap gap-2 items-center">
+            <button id="pipeGo" class="bg-ink-900 text-white rounded-lg px-4 py-2 text-sm font-medium">Запустить пайплайн</button>
+            <button id="pipePause" disabled class="border rounded-lg px-3 py-2 text-sm">Пауза</button>
+            <button id="pipeResume" disabled class="border rounded-lg px-3 py-2 text-sm">Продолжить</button>
+            <button id="pipeStop" disabled class="border rounded-lg px-3 py-2 text-sm text-red-700">Стоп</button>
+            <span id="pipeStatus" class="text-xs text-steel-600"></span>
+          </div>
+          <div class="h-2 bg-steel-100 rounded-full overflow-hidden"><div id="pipeBar" class="h-full bg-accent w-0"></div></div>
+          <div id="pipeFeed" class="text-xs space-y-1 max-h-48 overflow-auto bg-ink-900 text-white/80 rounded-lg p-2 mono"></div>
+          <div id="pipeOut" class="text-sm"></div>
+        </div>
+      </div>
+
+      <!-- Matrix Tab (Проверка корректности) -->
+      <div id="center-matrix" class="hidden flex-col flex-1 min-h-0">
+        <div class="bg-white border-b border-steel-100 p-3 flex gap-2 items-center">
+          <span class="text-xs font-semibold uppercase text-steel-600">Проверка карточек по одной (эффективно, пауза/стоп)</span>
+          <select id="docSel" class="border rounded-lg px-2 py-1 text-sm"></select>
+          <button id="run" class="bg-ink-800 text-white rounded-lg px-3 py-1.5 text-sm font-medium">Проверить документ (RAG v2)</button>
+          <button id="pause" disabled class="border rounded-lg px-2 py-1 text-xs">Пауза</button>
+          <button id="resume" disabled class="border rounded-lg px-2 py-1 text-xs">Продолжить</button>
+          <button id="stop" disabled class="border rounded-lg px-2 py-1 text-xs text-red-700">Стоп</button>
+        </div>
+        <div class="p-3">
+          <div id="stage" class="text-sm font-medium mb-2">ожидание</div>
+          <div class="h-2 bg-steel-100 rounded-full overflow-hidden mb-2"><div id="pbar" class="h-full bg-accent w-0"></div></div>
+          <div id="dl" class="flex gap-2 mb-2"></div>
+          <div class="overflow-auto max-h-[40vh] border rounded-lg bg-white">
+            <table class="w-full text-sm"><thead><tr class="text-left text-steel-600"><th class="p-2">код</th><th class="p-2">итог</th><th class="p-2">заметка</th></tr></thead><tbody id="mtx"></tbody></table>
+          </div>
+          <textarea id="log" readonly class="w-full h-32 text-xs mono bg-steel-50 rounded-lg p-2 border mt-3"></textarea>
+        </div>
+      </div>
+    </main>
+
+    <!-- RIGHT: Inspector -->
+    <aside class="bg-white border-l border-steel-100 flex flex-col min-h-[calc(100vh-56px)]">
+      <div class="p-3 border-b border-steel-100">
+        <h2 class="text-[13px] font-semibold uppercase tracking-wide text-steel-600">Инспектор</h2>
+        <div id="inspectorMeta" class="mt-2 text-xs text-steel-600">нет запроса</div>
+        <div id="budgetInfo" class="mt-2 text-[11px] mono bg-steel-50 border rounded-lg p-2"></div>
+      </div>
+      <div class="flex border-b border-steel-100 text-xs">
+        <button data-tab="reason" class="tabBtn flex-1 py-2 font-medium border-b-2 border-ink-900">Логика+Бюджет</button>
+        <button data-tab="reqs" class="tabBtn flex-1 py-2 text-steel-600">Требования</button>
+        <button data-tab="chunks" class="tabBtn flex-1 py-2 text-steel-600">Чанки</button>
+        <button data-tab="pipelines" class="tabBtn flex-1 py-2 text-steel-600">Токены</button>
+      </div>
+      <div class="flex-1 overflow-auto p-3 space-y-3" id="inspectorBody"></div>
+      <div class="p-3 border-t border-steel-100 text-[11px] text-steel-600">
+        <div>Последний: <span id="lastTiming" class="mono">—</span></div>
+        <details class="mt-2"><summary class="cursor-pointer underline">Соображения по эффективности</summary>
+          <div class="mt-2 space-y-1 leading-snug">
+            <b>Не жечь контекст:</b><br/>
+            • meta-вопросы — 0 ток, без LLM<br/>
+            • exact — 1 требование<br/>
+            • semantic — топ по score под бюджет, усечение по предложениям<br/>
+            • pipelines — по одной карточке (пауза/стоп), RAG v2 тянет только родителей и релевантные требования, а не весь документ<br/>
+            • кэш, дедупликация, только current ревизии<br/>
+            • бюджет настраиваемый: 2k эконом, 8k оптим, 16k для аналитики
+          </div>
+        </details>
+      </div>
+    </aside>
+  </div>
 
 <script>
 const $ = (id) => document.getElementById(id);
 const esc = (s) => String(s||'').replace(/[&<>]/g,c=>({ '&':'&amp;','<':'&lt;','>':'&gt;' }[c]));
-let bag = [], lastDoc = null, runId = null;
+let bag = [];
+let docsCache = [];
+let mode = "hybrid";
+let lastData = null;
+let budget = 8000;
+let top_k = 10;
 
-function log(line) {
-  const t = new Date().toISOString().slice(11,19) + ' ' + line + '\n';
-  $('log').value += t;
-  $('log').scrollTop = $('log').scrollHeight;
+function updateBudgetLabel(){
+  const tok = Math.round(budget / 3.5);
+  $('budgetLabel').textContent = `${budget} симв ~ ${tok} ток`;
+  if($('budgetInfo')) $('budgetInfo').innerHTML = `Бюджет RAG: <b>${budget} симв</b> ~ ${tok} ток<br/>70% требования / 20% чанки / 10% meta<br/>top_k=${top_k}`;
+}
+function setMode(m){
+  mode = m;
+  document.querySelectorAll('.modeBtn').forEach(b=>{
+    const on = b.dataset.mode===m;
+    b.className = "modeBtn px-3 py-1 rounded-full text-xs font-medium " + (on ? "bg-ink-900 text-white" : "text-steel-600");
+  });
+}
+document.querySelectorAll('.modeBtn').forEach(b=>b.onclick=()=>setMode(b.dataset.mode));
+setMode("hybrid");
+
+let activeTab = "reason";
+function setTab(t){
+  activeTab = t;
+  document.querySelectorAll('.tabBtn').forEach(b=>{
+    const on = b.dataset.tab===t;
+    b.className = "tabBtn flex-1 py-2 " + (on ? "font-medium border-b-2 border-ink-900" : "text-steel-600");
+  });
+  renderInspector();
+}
+document.querySelectorAll('.tabBtn').forEach(b=>b.onclick=()=>setTab(b.dataset.tab));
+
+let centerTab = "chat";
+function setCenterTab(t){
+  centerTab = t;
+  document.querySelectorAll('.centerTab').forEach(b=>{
+    const on = b.dataset.center===t;
+    b.className = "centerTab flex-1 py-2.5 " + (on ? "font-medium border-b-2 border-ink-900" : "text-steel-600");
+  });
+  $('center-chat').classList.toggle('hidden', t!=='chat');
+  $('center-chat').classList.toggle('flex', t==='chat');
+  $('center-pipelines').classList.toggle('hidden', t!=='pipelines');
+  $('center-pipelines').classList.toggle('flex', t==='pipelines');
+  $('center-matrix').classList.toggle('hidden', t!=='matrix');
+  $('center-matrix').classList.toggle('flex', t==='matrix');
+  if(t==='pipelines') loadPipelines();
+  if(t==='matrix') loadDocsForMatrix();
+}
+document.querySelectorAll('.centerTab').forEach(b=>b.onclick=()=>setCenterTab(b.dataset.center));
+
+async function api(path, opt){
+  const r = await fetch(path, opt);
+  if(!r.ok) throw new Error(await r.text());
+  return r.json();
 }
 
-function renderQueue() {
-  $('queue').innerHTML = bag.map(f => `<li>${esc(f.name)}</li>`).join('');
-  $('dropHint').textContent = bag.length ? bag.length + ' файл(ов)' : 'ничего не выбрано';
+async function loadWorkspace(){
+  try{
+    const ws = await api('/rag/workspace');
+    docsCache = ws.documents || [];
+    const tot = ws.totals || {};
+    $('wsTotals').textContent = `docs ${tot.documents||0} · reqs ${tot.requirements||0} · chunks ${tot.chunks||0}`;
+    $('stats').innerHTML = `
+      <div class="bg-steel-50 rounded-lg p-2"><div class="text-[16px] font-semibold leading-none">${tot.documents||0}</div><div class="text-[10px] text-steel-600 uppercase">документов</div></div>
+      <div class="bg-steel-50 rounded-lg p-2"><div class="text-[16px] font-semibold leading-none">${tot.requirements||0}</div><div class="text-[10px] text-steel-600 uppercase">требований</div></div>
+      <div class="bg-steel-50 rounded-lg p-2"><div class="text-[16px] font-semibold leading-none">${tot.chunks||0}</div><div class="text-[10px] text-steel-600 uppercase">чанков</div></div>
+    `;
+    $('docs').innerHTML = docsCache.map(d=>`
+      <div class="group border border-steel-100 rounded-xl p-2.5 hover:border-accent hover:bg-blue-50/30 cursor-pointer" onclick="openDoc(${d.id})">
+        <div class="flex justify-between gap-2"><div class="text-[13px] font-medium leading-tight truncate">${esc(d.filename)}</div><span class="text-[10px] px-1.5 py-0.5 rounded-full bg-steel-50 border">${esc(d.status||'')}</span></div>
+        ${d.title && d.title!==d.filename ? `<div class="text-[11px] text-steel-600 truncate">${esc(d.title)}</div>`:''}
+        <div class="mt-1 flex gap-2 text-[11px] text-steel-600"><span class="px-1.5 py-0.5 bg-white border rounded-full">${d.requirements_count} треб.</span><span class="px-1.5 py-0.5 bg-white border rounded-full">${d.chunks_count} чанков</span></div>
+      </div>
+    `).join('') || '<div class="text-xs text-steel-600">документов нет</div>';
+    // update selects
+    const opts = docsCache.map(d=>`<option value="${d.id}">${esc(d.filename)}</option>`).join('');
+    if($('pipeDoc')) $('pipeDoc').innerHTML = `<option value="">документ…</option>`+opts;
+    if($('docSel')) $('docSel').innerHTML = opts || '<option value="">нет документов</option>';
+  }catch(e){
+    $('docs').innerHTML = `<div class="text-xs text-red-600">${esc(e.message)}</div>`;
+  }
+}
+async function openDoc(id){
+  try{
+    const d = await api(`/rag/document/${id}`);
+    $('docDetail').classList.remove('hidden');
+    $('docDetailBody').innerHTML = `<div class="font-medium">${esc(d.filename)}</div><div class="text-[11px] text-steel-600">${esc(d.title||'')} · ${d.requirements_count} треб.</div><pre class="mt-2 bg-steel-50 p-2 rounded-lg text-[11px] whitespace-pre-wrap max-h-32 overflow-auto">${esc((d.raw_text_preview||'').slice(0,1000))}</pre><div class="mt-2 space-y-1 max-h-64 overflow-auto">${(d.requirements||[]).slice(0,20).map(r=>`<div class="border rounded-lg p-2"><div class="mono text-[11px] text-accent">${esc(r.code)}</div><div class="text-[11px]">${esc(r.text.slice(0,160))}</div></div>`).join('')}</div>`;
+  }catch(e){ $('docDetailBody').innerHTML = esc(e.message); }
+}
+function renderQueue(){
+  $('queue').innerHTML = bag.map(f=>`<div class="flex justify-between bg-steel-50 rounded-lg px-2 py-1 mt-1"><span class="truncate">${esc(f.name)}</span><span class="text-[10px] text-steel-600">${Math.round(f.size/1024)}KB</span></div>`).join('');
   $('go').disabled = !bag.length;
+  $('dropHint').textContent = bag.length ? `${bag.length} файл(ов)` : 'или клик';
 }
-
-$('files').onchange = e => { bag = [...bag, ...e.target.files]; renderQueue(); };
-$('clear').onclick = () => { bag = []; renderQueue(); };
-
-async function loadDocs() {
-  const docs = await fetch('/documents').then(r => r.json());
-  $('docSel').innerHTML = docs.map(d => `<option value="${d.id}" ${d.id===lastDoc?'selected':''}>${esc(d.filename)}</option>`).join('') || '<option value="">нет документов</option>';
-  if (!lastDoc && docs[0]) lastDoc = docs[0].id;
-}
-
-$('docSel').onchange = () => { lastDoc = +$('docSel').value; };
-
-$('go').onclick = async () => {
-  $('go').disabled = true;
-  $('msg').textContent = 'читаем файлы…';
-  const fd = new FormData();
-  for (const f of bag) fd.append('files', f);
-  const res = await fetch('/index', { method: 'POST', body: fd });
-  const reader = res.body.getReader();
-  const dec = new TextDecoder();
-  let buf = '';
-  while (true) {
-    const {value, done} = await reader.read();
-    if (done) break;
-    buf += dec.decode(value, {stream:true});
-    const lines = buf.split('\n'); buf = lines.pop();
-    for (const line of lines) {
-      if (!line.trim()) continue;
-      const ev = JSON.parse(line);
-      if (ev.event === 'file_start') { $('bar').style.width = Math.round(100*(ev.index-1)/ev.total)+'%'; $('msg').textContent = ev.filename; log('ingest ' + ev.filename); }
-      if (ev.event === 'file_done') {
-        lastDoc = ev.document_id;
-        const r = ev.ingest_report || {};
-        log(`ingest_ok ${ev.filename} cards=${r.cards||0} stubs=${r.stubs||0} images=${r.images||0}`);
-      }
-      if (ev.event === 'file_error') log('ingest_err ' + ev.filename + ' ' + ev.error);
-      if (ev.event === 'done') {
-        $('bar').style.width = '100%';
-        $('msg').textContent = 'база собрана — выберите документ и проверьте';
-      }
-    }
-  }
-  bag = []; renderQueue(); await loadDocs();
-  $('go').disabled = false;
+$('files').onchange = e=>{ bag=[...bag, ...e.target.files]; renderQueue(); };
+$('clear').onclick = ()=>{ bag=[]; renderQueue(); };
+['dragover','dragenter'].forEach(ev=>$('drop').addEventListener(ev, e=>{e.preventDefault(); $('drop').classList.add('border-accent');}));
+['dragleave','drop'].forEach(ev=>$('drop').addEventListener(ev, e=>{ if(ev==='drop'){ e.preventDefault(); bag=[...bag, ...e.dataTransfer.files]; renderQueue(); } $('drop').classList.remove('border-accent'); }));
+$('drop').addEventListener('click', (e)=>{ if(e.target.id!=='files') $('files').click(); });
+$('reloadWs').onclick = loadWorkspace;
+$('go').onclick = async ()=>{
+  if(!bag.length) return;
+  $('go').disabled=true; $('msg').textContent='читаем…';
+  const fd=new FormData(); for(const f of bag) fd.append('files', f);
+  try{
+    const res=await fetch('/index',{method:'POST',body:fd});
+    if(!res.ok) throw new Error(await res.text());
+    const reader=res.body.getReader(); const dec=new TextDecoder(); let buf='';
+    while(true){ const {value,done}=await reader.read(); if(done) break; buf+=dec.decode(value,{stream:true}); const lines=buf.split('\n'); buf=lines.pop(); for(const line of lines){ if(!line.trim()) continue; const ev=JSON.parse(line); if(ev.event==='file_start'){ $('bar').style.width=Math.round(100*(ev.index-1)/ev.total)+'%'; $('msg').textContent=ev.filename; } if(ev.event==='file_done'){ $('bar').style.width=Math.round(100*ev.index/ev.total)+'%'; } if(ev.event==='done'){ $('bar').style.width='100%'; $('msg').textContent='готово'; bag=[]; renderQueue(); await loadWorkspace(); $('go').disabled=false; return; } } }
+  }catch(e){ $('msg').textContent=e.message; $('go').disabled=false; }
 };
 
-function setStage(name) {
-  ['read','context','eval','row'].forEach(s => {
-    const el = $('st-'+s);
-    el.className = 'px-2 py-1 rounded ' + (s===name ? 'bg-accent text-white' : 'bg-steel-100');
-  });
-}
+// budget handling
+$('budget').oninput = e=>{ budget=+e.target.value; updateBudgetLabel(); document.querySelectorAll('.presetBtn').forEach(b=>{ b.className='presetBtn text-[11px] px-2 py-1 rounded-full border bg-white'; if(+b.dataset.preset===budget) b.className='presetBtn text-[11px] px-2 py-1 rounded-full border bg-ink-900 text-white'; }); };
+document.querySelectorAll('.presetBtn').forEach(b=>b.onclick=()=>{ budget=+b.dataset.preset; $('budget').value=budget; updateBudgetLabel(); document.querySelectorAll('.presetBtn').forEach(x=>x.className='presetBtn text-[11px] px-2 py-1 rounded-full border bg-white'); b.className='presetBtn text-[11px] px-2 py-1 rounded-full border bg-ink-900 text-white'; });
+$('topk').oninput = e=>{ top_k=+e.target.value; $('topkLabel').textContent=top_k; };
+updateBudgetLabel();
 
-function setBusy(on) {
-  $('run').disabled = on;
-  $('pause').disabled = !on;
-  $('resume').disabled = true;
-  $('stop').disabled = !on;
+// chat
+async function loadExamples(){
+  try{ const ex=await api('/rag/examples'); $('examples').innerHTML=ex.map(x=>`<button class="px-2.5 py-1 rounded-full bg-steel-50 border text-[12px] hover:bg-white hover:border-accent text-left" onclick="setQ('${esc(x.q).replace(/'/g,"\\'")}')">${esc(x.q)}</button>`).join(''); }catch{}
 }
-
-$('run').onclick = async () => {
-  const docId = +$('docSel').value;
-  if (!docId) { $('stage').textContent = 'выберите документ'; return; }
-  const reqs = await fetch('/requirements?document_id='+docId).then(r => r.json());
-  const ids = reqs.filter(r => !(r.extra && (r.extra.stub || r.extra.appendix))).map(r => r.id);
-  log(`start doc=${docId} cards=${ids.length}`);
-  if (!ids.length) { $('stage').textContent = 'в документе нет карточек требований'; return; }
-  $('mtx').innerHTML = '';
-  $('dl').innerHTML = '';
-  setBusy(true);
-  const res = await fetch('/pipelines/runs/review-correctness', {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({document_id: docId, requirement_ids: ids}),
-  });
-  if (!res.ok) { $('stage').textContent = await res.text(); setBusy(false); return; }
-  const started = await res.json();
-  runId = started.run_id;
-  const stream = await fetch('/pipelines/runs/'+runId+'/stream');
-  const reader = stream.body.getReader();
-  const dec = new TextDecoder();
-  let buf = '';
-  while (true) {
-    const {value, done} = await reader.read();
-    if (done) break;
-    buf += dec.decode(value, {stream:true});
-    const lines = buf.split('\n'); buf = lines.pop();
-    for (const line of lines) if (line.trim()) handle(JSON.parse(line));
+function setQ(q){ $('q').value=q; $('q').focus(); }
+window.setQ=setQ; window.openDoc=openDoc;
+function addMessage(role,text,sources){
+  const div=document.createElement('div'); const isUser=role==='user';
+  div.className=isUser?'flex justify-end':'flex justify-start';
+  div.innerHTML=`<div class="${isUser?'bg-ink-900 text-white':'bg-white border border-steel-100'} rounded-[16px] px-4 py-3 max-w-[90%] text-[13px] leading-relaxed"><div class="whitespace-pre-wrap">${esc(text)}</div>${sources?`<div class="mt-2 flex flex-wrap gap-1">${sources}</div>`:''}</div>`;
+  $('chat').appendChild(div); $('chat').scrollTop=$('chat').scrollHeight;
+}
+function renderInspector(){
+  if(!lastData){ $('inspectorBody').innerHTML='<div class="text-xs text-steel-600">Спроси что-нибудь.</div>'; return; }
+  const d=lastData; const b=d.budget||{};
+  $('inspectorMeta').innerHTML=`<div class="flex items-center gap-2"><span class="px-2 py-0.5 rounded-full bg-ink-900 text-white text-[11px]">${esc(d.intent)}</span><span class="text-[11px]">conf ${d.confidence}</span><span class="text-[10px] px-1.5 py-0.5 rounded-full ${d.mode==='hybrid'?'bg-blue-50 text-accent border':'bg-red-50 text-red-700 border'}">${esc(d.mode)}</span></div><div class="mt-1 text-[11px]">${esc(d.explanation)}</div>`;
+  if(b.budget_chars) $('budgetInfo').innerHTML=`Использовано <b>${b.used_chars}/${b.budget_chars} симв</b> ~ ${b.estimated_tokens}/${b.budget_tokens} ток<br/>треб ${b.requirements_count} чан ${b.chunks_count} остат ${b.remaining_chars}`;
+  $('lastTiming').textContent=`${d.timing_ms}ms · ${d.requirements?.length||0} req · ${d.chunks?.length||0} chunks · budget ${b.used_chars||0}/${b.budget_chars||budget}`;
+  if(activeTab==='reason'){
+    $('inspectorBody').innerHTML=`<div class="text-xs space-y-3"><div class="bg-steel-50 rounded-xl p-3"><div class="font-semibold mb-1">Почему так</div><div class="leading-snug text-steel-600">${esc(d.reasoning)}</div></div><div class="bg-white border rounded-xl p-3"><div class="font-semibold">Бюджет</div><div class="mono text-[11px] mt-1">budget ${b.budget_chars||budget} симв / ${b.budget_tokens||Math.round(budget/3.5)} ток<br/>used ${b.used_chars||0} / remain ${b.remaining_chars||0}<br/>req ${b.requirements_count||0} chunk ${b.chunks_count||0}<br/>top_k=${top_k} mode=${d.mode}</div><div class="text-[11px] mt-2">При 100 требованиях не грузим всё — только топ по score под бюджет. Meta-вопросы 0 токенов.</div></div><div class="bg-blue-50 border border-blue-100 rounded-xl p-2 text-[11px] text-blue-700">RAG v2: meta (list/count) → 0 ток, exact → 1 треб, semantic → budget pack 70% req /20% chunk. Пайплайны теперь тоже используют этот бюджет.</div></div>`;
+  }else if(activeTab==='reqs'){
+    if(!d.requirements?.length) $('inspectorBody').innerHTML='<div class="text-xs text-steel-600">пусто</div>';
+    else $('inspectorBody').innerHTML=d.requirements.map(r=>`<div class="border border-steel-100 rounded-xl p-2.5 bg-white"><div class="flex justify-between gap-2"><span class="mono text-[11px] text-accent font-medium">${esc(r.code)}</span><span class="text-[10px] px-1.5 py-0.5 rounded-full bg-steel-50 border">${esc(r.match_type)} ${r.score}</span></div><div class="text-[11px] text-steel-600 mt-1">${esc(r.document_filename)} ${r.section_path?'· '+esc(r.section_path):''} · ${esc(r.kind)}</div><div class="text-[12px] mt-1 leading-snug">${esc(r.text.slice(0,400))}</div></div>`).join('');
+  }else if(activeTab==='chunks'){
+    if(!d.chunks?.length) $('inspectorBody').innerHTML='<div class="text-xs text-steel-600">пусто</div>';
+    else $('inspectorBody').innerHTML=d.chunks.map(c=>`<div class="border border-steel-100 rounded-xl p-2.5 bg-white"><div class="flex justify-between"><span class="text-[11px] mono">${esc(c.document_filename)} #${c.seq}</span><span class="text-[10px] bg-steel-50 border px-1.5 py-0.5 rounded-full">${c.score}</span></div><div class="text-[12px] mt-1 leading-snug">${esc(c.text.slice(0,400))}</div></div>`).join('');
+  }else if(activeTab==='pipelines'){
+    $('inspectorBody').innerHTML=`<div class="text-xs space-y-2"><div class="bg-steel-50 rounded-lg p-2">Бюджет токенов: ${b.used_chars||0}/${b.budget_chars||budget} симв<br/>Токенов ~ ${b.estimated_tokens||0}/${b.budget_tokens||0}<br/>Экономия: meta 0, exact 1, semantic pack</div><div class="bg-white border rounded-lg p-2">Последний пайплайн: <span id="lastPipe">-</span></div></div>`;
   }
-  setBusy(false);
-  $('resume').disabled = true;
+}
+async function sendQuery(){
+  const q=$('q').value.trim(); if(!q) return; addMessage('user',q); $('q').value=''; $('send').disabled=true;
+  try{
+    const res=await fetch('/rag/query',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({query:q, mode, top_k, budget_chars:budget})});
+    const data=await res.json(); if(!res.ok) throw new Error(data.detail||JSON.stringify(data));
+    lastData=data; const srcChips=(data.requirements||[]).slice(0,3).map(r=>`<span class="text-[10px] px-2 py-0.5 rounded-full bg-blue-50 border border-blue-100 text-accent mono">${esc(r.code)}</span>`).join('') + (data.chunks?.length?`<span class="text-[10px] px-2 py-0.5 rounded-full bg-steel-50 border">${data.chunks.length} chunks</span>`:'') + ` <span class="text-[10px] px-2 py-0.5 rounded-full bg-steel-50 border">${esc(data.intent)} ${data.budget?data.budget.used_chars+'/'+data.budget.budget_chars:''}</span>`;
+    addMessage('assistant',data.answer,srcChips); renderInspector();
+  }catch(e){ addMessage('assistant','Ошибка: '+e.message); } finally{ $('send').disabled=false; }
+}
+$('send').onclick=sendQuery; $('q').addEventListener('keydown',e=>{ if(e.key==='Enter') sendQuery(); });
+
+// pipelines
+let pipelines = [], selectedPipe = null, pipeRunId=null;
+async function loadPipelines(){
+  try{
+    const list=await api('/pipelines');
+    pipelines=list;
+    $('pipelineList').innerHTML=list.map(p=>`<div class="border rounded-xl p-2 bg-white hover:border-accent cursor-pointer" data-name="${p.name}" onclick="selectPipe('${p.name}')"><div class="text-[13px] font-medium">${esc(p.title)}</div><div class="text-[11px] text-steel-600">${esc(p.name)} · ${esc(p.slot||'')} · ${esc(p.kind||'')}</div></div>`).join('');
+  }catch(e){ $('pipelineList').innerHTML=`<div class="text-xs text-red-600">${esc(e.message)}</div>`; }
+}
+function selectPipe(name){
+  selectedPipe=name;
+  document.querySelectorAll('#pipelineList div').forEach(d=>{ d.classList.toggle('border-accent', d.dataset.name===name); d.classList.toggle('bg-blue-50', d.dataset.name===name); });
+  $('pipeStatus').textContent=`выбран ${name} + RAG v2 бюджет ${budget}`;
+}
+window.selectPipe=selectPipe;
+async function loadReqsForPipe(){
+  const docId=$('pipeDoc').value; if(!docId){ $('pipeReqs').innerHTML='документ'; return; }
+  const rows=await api('/requirements?document_id='+docId);
+  const filtered=rows.filter(r=>!(r.extra&& (r.extra.stub||r.extra.appendix)));
+  $('pipeReqs').innerHTML=filtered.map(r=>`<label class="flex gap-2 items-start mb-1"><input type="checkbox" class="preq" value="${r.id}" checked><span><span class="mono text-accent">${esc(r.code)}</span> ${esc((r.text||'').slice(0,100))}</span></label>`).join('')||'пусто';
+  updateSelCount(); $('pipeReqs').querySelectorAll('input').forEach(c=>c.onchange=updateSelCount);
+}
+function updateSelCount(){ $('pipeSelCount').textContent=document.querySelectorAll('.preq:checked').length; }
+$('pipeLoadReqs').onclick=loadReqsForPipe; $('pipeDoc').onchange=loadReqsForPipe;
+$('pipeAll').onclick=()=>{ document.querySelectorAll('.preq').forEach(c=>c.checked=true); updateSelCount(); };
+$('pipeNone').onclick=()=>{ document.querySelectorAll('.preq').forEach(c=>c.checked=false); updateSelCount(); };
+
+$('pipeGo').onclick=async()=>{
+  if(!selectedPipe){ $('pipeStatus').textContent='выбери пайплайн'; return; }
+  const docId=$('pipeDoc').value; if(!docId){ $('pipeStatus').textContent='документ'; return; }
+  const ids=[...document.querySelectorAll('.preq:checked')].map(c=>+c.value);
+  if(!ids.length){ $('pipeStatus').textContent='требования'; return; }
+  $('pipeGo').disabled=true; $('pipeFeed').innerHTML=''; $('pipeOut').innerHTML=''; $('pipeBar').style.width='0%';
+  const body={document_id:+docId, requirement_ids:ids, budget_chars:budget, top_k:+$('pipeTopK').value, use_advanced_rag:true, query:$('pipeQuery').value||undefined};
+  try{
+    const res=await fetch('/pipelines/runs/'+selectedPipe,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(!res.ok) throw new Error(await res.text());
+    const started=await res.json(); pipeRunId=started.run_id;
+    $('pipeStatus').textContent=`run ${pipeRunId} budget ${budget} (RAG v2)`;
+    $('pipePause').disabled=false; $('pipeStop').disabled=false;
+    const stream=await fetch('/pipelines/runs/'+pipeRunId+'/stream'); const reader=stream.body.getReader(); const dec=new TextDecoder(); let buf='';
+    while(true){ const {value,done}=await reader.read(); if(done) break; buf+=dec.decode(value,{stream:true}); const lines=buf.split('\n'); buf=lines.pop(); for(const line of lines) if(line.trim()) handlePipe(JSON.parse(line)); }
+    if(buf.trim()) handlePipe(JSON.parse(buf));
+  }catch(e){ $('pipeStatus').textContent=e.message; } finally{ $('pipeGo').disabled=false; }
 };
-
-function handle(ev) {
-  if (ev.log) log(ev.log);
-  else if (ev.step) log((ev.event||'') + ' ' + ev.step);
-  if (ev.stage) setStage(ev.stage);
-  if (ev.step) $('stage').textContent = ev.step;
-  if (ev.total && ev.index) $('pbar').style.width = Math.round(100*ev.index/ev.total) + '%';
-  if (ev.event === 'item_done') {
-    const tr = document.createElement('tr');
-    tr.innerHTML = `<td class="p-2 font-mono">${esc(ev.code)}</td><td class="p-2">${ev.pass?'+':'–'}</td><td class="p-2">${esc((ev.note||'').slice(0,160))}</td>`;
-    $('mtx').prepend(tr);
-  }
-  if (ev.event === 'pause') { $('pause').disabled = true; $('resume').disabled = false; }
-  if (ev.event === 'resume') { $('pause').disabled = false; $('resume').disabled = true; }
-  if (ev.event === 'done' || ev.event === 'stopped') {
-    $('pbar').style.width = '100%';
-    const d = (ev.result && ev.result.downloads) || {};
-    const href = d.docx || (ev.result && ev.result.download);
-    $('dl').innerHTML = href
-      ? `<a class="bg-accent text-white rounded-lg px-4 py-2 inline-block" href="${href}">Скачать матрицу Word</a>`
-        + (d.xlsx?` <a class="border rounded-lg px-4 py-2 inline-block" href="${d.xlsx}">Excel</a>`:'')
-        + (d.md?` <a class="border rounded-lg px-4 py-2 inline-block" href="${d.md}">MD</a>`:'')
-      : '';
-    $('stage').textContent = ev.event === 'stopped' ? 'остановлено — матрица по уже проверенным' : 'готово';
-  }
+function handlePipe(ev){
+  const el=document.createElement('div'); el.className='mb-1'; el.textContent=`[${ev.event||''}] ${ev.step||''} ${ev.tokens?JSON.stringify(ev.tokens):''}`;
+  $('pipeFeed').prepend(el);
+  if(ev.total && ev.index) $('pipeBar').style.width=Math.round(100*ev.index/ev.total)+'%';
+  if(ev.event==='done'){ $('pipeBar').style.width='100%'; $('pipeStatus').textContent='готово'; $('pipePause').disabled=true; $('pipeResume').disabled=true; $('pipeStop').disabled=true; const r=ev.result; if(r){ let html=`<div class="text-xs">mode ${r.mode||''}</div>`; if(r.downloads){ html+=Object.entries(r.downloads).map(([k,v])=>`<a class="text-xs underline mr-2" href="${v}">${k}</a>`).join(''); } if(r.output) html+=`<pre class="bg-steel-50 p-2 rounded-lg text-xs whitespace-pre-wrap mt-2">${esc(String(r.output).slice(0,5000))}</pre>`; $('pipeOut').innerHTML=html; } }
+  if(ev.event==='pause'){ $('pipePause').disabled=true; $('pipeResume').disabled=false; }
+  if(ev.event==='resume'){ $('pipePause').disabled=false; $('pipeResume').disabled=true; }
 }
+$('pipePause').onclick=()=>pipeRunId&&fetch('/pipelines/runs/'+pipeRunId+'/pause',{method:'POST'});
+$('pipeResume').onclick=()=>pipeRunId&&fetch('/pipelines/runs/'+pipeRunId+'/resume',{method:'POST'});
+$('pipeStop').onclick=()=>pipeRunId&&fetch('/pipelines/runs/'+pipeRunId+'/stop',{method:'POST'});
 
-$('pause').onclick = () => runId && fetch('/pipelines/runs/'+runId+'/pause', {method:'POST'});
-$('resume').onclick = () => runId && fetch('/pipelines/runs/'+runId+'/resume', {method:'POST'});
-$('stop').onclick = () => runId && fetch('/pipelines/runs/'+runId+'/stop', {method:'POST'});
-$('copyLog').onclick = () => { navigator.clipboard.writeText($('log').value); };
-loadDocs();
+// matrix check (old)
+let runId=null; let lastDoc=null;
+async function loadDocsForMatrix(){ const docs=await api('/documents'); $('docSel').innerHTML=docs.map(d=>`<option value="${d.id}" ${d.id===lastDoc?'selected':''}>${esc(d.filename)}</option>`).join('')||'<option value="">нет</option>'; if(!lastDoc&&docs[0]) lastDoc=docs[0].id; }
+$('docSel').onchange=()=>{ lastDoc=+$('docSel').value; };
+$('run').onclick=async()=>{
+  const docId=+$('docSel').value; if(!docId){ $('stage').textContent='документ'; return; }
+  const reqs=await api('/requirements?document_id='+docId); const ids=reqs.filter(r=>!(r.extra&&(r.extra.stub||r.extra.appendix))).map(r=>r.id);
+  if(!ids.length){ $('stage').textContent='нет карточек'; return; }
+  $('mtx').innerHTML=''; $('dl').innerHTML=''; $('run').disabled=true; $('pause').disabled=false; $('stop').disabled=false;
+  const res=await fetch('/pipelines/runs/review-correctness',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({document_id:docId, requirement_ids:ids, budget_chars:budget})});
+  if(!res.ok){ $('stage').textContent=await res.text(); $('run').disabled=false; return; }
+  const started=await res.json(); runId=started.run_id;
+  const stream=await fetch('/pipelines/runs/'+runId+'/stream'); const reader=stream.body.getReader(); const dec=new TextDecoder(); let buf='';
+  while(true){ const {value,done}=await reader.read(); if(done) break; buf+=dec.decode(value,{stream:true}); const lines=buf.split('\n'); buf=lines.pop(); for(const line of lines) if(line.trim()) handleMatrix(JSON.parse(line)); }
+  $('run').disabled=false; $('pause').disabled=true; $('resume').disabled=true; $('stop').disabled=true;
+};
+function handleMatrix(ev){
+  if(ev.log) { $('log').value+=ev.log+'\n'; }
+  if(ev.stage) { document.querySelectorAll('#st-read,#st-context,#st-eval,#st-row').forEach(el=>el.classList.remove('bg-accent','text-white')); const el=document.getElementById('st-'+ev.stage); if(el) el.classList.add('bg-accent','text-white'); }
+  if(ev.step) $('stage').textContent=ev.step;
+  if(ev.total&&ev.index) $('pbar').style.width=Math.round(100*ev.index/ev.total)+'%';
+  if(ev.event==='item_done'){ const tr=document.createElement('tr'); tr.innerHTML=`<td class="p-2 mono">${esc(ev.code)}</td><td class="p-2">${ev.pass?'+':'–'}</td><td class="p-2">${esc((ev.note||'').slice(0,160))}</td>`; $('mtx').prepend(tr); }
+  if(ev.event==='done'&&ev.result){ const d=ev.result.downloads||{}; const href=d.docx||ev.result.download; $('dl').innerHTML=href?`<a class="bg-accent text-white rounded-lg px-3 py-1 text-sm" href="${href}">Скачать Word</a>`:''; $('stage').textContent='готово'; }
+}
+$('pause').onclick=()=>runId&&fetch('/pipelines/runs/'+runId+'/pause',{method:'POST'});
+$('resume').onclick=()=>runId&&fetch('/pipelines/runs/'+runId+'/resume',{method:'POST'});
+$('stop').onclick=()=>runId&&fetch('/pipelines/runs/'+runId+'/stop',{method:'POST'});
+
+loadWorkspace(); loadExamples(); renderInspector(); setCenterTab('chat');
 </script>
 </body>
 </html>

@@ -20,6 +20,16 @@ class Settings(BaseSettings):
     chunk_overlap: int = 80
     context_budget_chars: int = 10000
 
+    # advanced RAG v2
+    rag_max_context_chars: int = 8000
+    rag_default_top_k: int = 10
+    rag_requirements_share: float = 0.7  # доля бюджета под требования
+    rag_chunks_share: float = 0.2
+    rag_meta_share: float = 0.1
+    rag_token_ratio: float = 3.5  # chars per token approx for ru
+    rag_enable_rerank: bool = True
+    rag_cache_ttl_sec: int = 300
+
     admin_username: str = "admin"
     admin_password: str = "admin"
     admin_email: str = "admin@local"

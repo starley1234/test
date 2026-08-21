@@ -17,6 +17,8 @@ class RetrievalRequest(BaseModel):
     top_k: int = 8
     hop: int = 2
     context_mode: str = "graph"  # graph | hybrid | chunks
+    budget_chars: int | None = Field(default=None, description="Макс размер контекста в символах — влияет на RAG упаковку")
+    max_context_chars: int | None = Field(default=None, description="Alias для budget_chars")
 
 
 class PipelineRequest(RetrievalRequest):
@@ -24,6 +26,7 @@ class PipelineRequest(RetrievalRequest):
     source_code: str | None = Field(default=None, description="Исходник модуля (если есть). Без него прогон не выполняется.")
     requirement_ids: list[int] | None = Field(default=None, description="Галочки: только эти требования")
     debug: bool = Field(default=False, description="Писать в лог промпты и контекст")
+    use_advanced_rag: bool = Field(default=True, description="Использовать RAG v2 с бюджетом")
 
 
 class DocumentOut(BaseModel):

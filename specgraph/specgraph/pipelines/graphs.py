@@ -45,20 +45,45 @@ def _notify(_state: PipelineState, ev: dict[str, Any]) -> None:
 
 def _retrieve(state: PipelineState, db: Session) -> PipelineState:
     ids = state.get("requirement_ids")
-    ctx = gather_context(
-        db,
-        query=state.get("query"),
-        product_id=state.get("product_id"),
-        product_code=state.get("product_code"),
-        document_id=state.get("document_id"),
-        requirement_id=state.get("requirement_id"),
-        requirement_ids=ids,
-        mode=state.get("context_mode") or "graph",
-    )
-    prompt = context_as_prompt(ctx)
-    ev = {"event": "retrieve", "step": f"контекст: {len(ctx.get('requirements') or [])} треб."}
+    budget = state.get("budget_chars") or state.get("max_context_chars")
+    use_advanced = state.get("use_advanced_rag", True)
+
+    if use_advanced:
+        from specgraph.retrieval.advanced_context import gather_advanced_rag_context, context_as_prompt_advanced
+        ctx = gather_advanced_rag_context(
+            db,
+            query=state.get("query"),
+            product_id=state.get("product_id"),
+            product_code=state.get("product_code"),
+            document_id=state.get("document_id"),
+            requirement_id=state.get("requirement_id"),
+            requirement_ids=ids,
+            top_k=state.get("top_k") or 10,
+            budget_chars=budget,
+            mode="hybrid",
+        )
+        prompt = context_as_prompt_advanced(ctx)
+        br = ctx.get("budget_breakdown", {})
+        ev = {
+            "event": "retrieve",
+            "step": f"RAG v2: {len(ctx.get('requirements') or [])} треб., {br.get('used_chars',0)}/{br.get('budget_chars',budget or 0)} симв. ~{br.get('estimated_tokens',0)} ток.",
+        }
+    else:
+        ctx = gather_context(
+            db,
+            query=state.get("query"),
+            product_id=state.get("product_id"),
+            product_code=state.get("product_code"),
+            document_id=state.get("document_id"),
+            requirement_id=state.get("requirement_id"),
+            requirement_ids=ids,
+            mode=state.get("context_mode") or "graph",
+        )
+        prompt = context_as_prompt(ctx)
+        ev = {"event": "retrieve", "step": f"контекст: {len(ctx.get('requirements') or [])} треб."}
+
     if state.get("debug"):
-        ev["debug"] = {"prompt": prompt[:12000], "requirement_ids": ids, "document_id": state.get("document_id")}
+        ev["debug"] = {"prompt": prompt[:12000], "requirement_ids": ids, "document_id": state.get("document_id"), "budget": ctx.get("budget_chars")}
     _notify(state, ev)
     return {**state, "context": ctx, "prompt": prompt}
 
